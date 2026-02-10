@@ -24,5 +24,12 @@ struct TicketPartyApp: App {
             TicketPartyRootView()
         }
         .modelContainer(sharedModelContainer)
+
+#if os(macOS)
+        Settings {
+            TicketPartySettingsView()
+        }
+        .modelContainer(sharedModelContainer)
+#endif
     }
 }
