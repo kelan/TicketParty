@@ -251,3 +251,41 @@ struct ProjectEditorSheet: View {
         .frame(minWidth: 520, minHeight: 320)
     }
 }
+
+#Preview {
+    ProjectDetailView(project: ProjectPreviewData.project)
+        .modelContainer(ProjectPreviewData.container)
+}
+
+@MainActor
+private enum ProjectPreviewData {
+    static let container: ModelContainer = {
+        let schema = Schema([Project.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+
+        do {
+            return try ModelContainer(for: schema, configurations: [configuration])
+        } catch {
+            fatalError("Failed to create preview container: \(error)")
+        }
+    }()
+
+    static let project: Project = {
+        let project = Project(
+            name: "Growth Site",
+            statusText: "Release candidate",
+            summary: "Final QA and launch checklist in progress."
+        )
+
+        let context = container.mainContext
+        context.insert(project)
+
+        do {
+            try context.save()
+        } catch {
+            // Preview-only context; ignore save failures.
+        }
+
+        return project
+    }()
+}
