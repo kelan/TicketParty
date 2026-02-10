@@ -1,0 +1,132 @@
+--swiftversion 5
+--minversion 0.53.0
+
+# rules
+
+--disable acronyms
+--disable andOperator
+--enable anyObjectProtocol
+--disable assertionFailures
+
+--disable blankLinesAroundMark
+--enable blankLinesAtEndOfScope
+--disable blankLinesAtStartOfScope
+--enable blankLinesBetweenImports
+--enable blankLinesBetweenScopes
+--disable blockComments
+
+--enable braces
+
+--enable consecutiveBlankLines
+--enable consecutiveSpaces
+
+--enable duplicateImports
+--elseposition same-line
+
+--disable enumNamespaces
+
+--disable fileHeader
+
+--enable hoistPatternLet
+
+--disable initCoderUnavailable
+
+--enable isEmpty
+
+--enable leadingDelimiters
+--disable linebreakAtEndOfFile
+
+--disable markTypes
+--enable modifierOrder
+
+--disable organizeDeclarations
+
+--enable preferKeyPath
+
+--enable redundantBackticks
+--enable redundantBreak
+--enable redundantClosure
+--enable redundantExtensionACL
+--enable redundantFileprivate
+--enable redundantGet
+--enable redundantInit
+--enable redundantLet
+--enable redundantLetError
+--enable redundantNilInit
+--enable redundantObjc
+--enable redundantParens
+--enable redundantPattern
+--enable redundantRawValues
+--enable redundantReturn
+--enable redundantSelf
+# Exceptions to redundantSelf: Logger.info()/etc, which are @autoclosures
+--selfrequired log
+--selfrequired info
+--selfrequired debug
+--selfrequired warning
+--selfrequired error
+--disable redundantType
+--enable redundantVoidReturnType
+
+--disable semicolons
+--enable sortImports
+--disable sortSwitchCases
+
+--enable spaceAroundBraces
+--enable spaceAroundBrackets
+--disable spaceAroundComments
+--enable spaceAroundGenerics
+--enable spaceAroundOperators
+--enable spaceAroundParens
+
+--enable spaceInsideBraces
+--enable spaceInsideBrackets
+--disable spaceInsideComments
+--enable spaceInsideGenerics
+--enable spaceInsideParens
+
+--enable strongOutlets
+
+--disable todos
+--enable trailingClosures
+--enable trailingCommas
+--enable trailingSpace
+--enable typeSugar
+
+--enable unusedArguments
+--stripunusedargs closure-only
+
+--enable void
+
+--disable wrapConditionalBodies
+--enable wrapEnumCases
+--enable wrapMultilineStatementBraces
+--disable wrapSwitchCases
+
+--disable yodaConditions
+
+# format options
+
+--indent 4
+--xcodeindentation enabled
+--decimalgrouping 3,6
+--allman false
+--emptybraces no-space
+--extensionacl on-extension
+--wraparguments before-first
+--wrapcollections before-first
+--funcattributes prev-line
+--typeattributes prev-line
+--storedvarattrs same-line
+--computedvarattrs same-line
+
+--exclude **/DerivedData
+--exclude **/Generated
+--exclude **/*.generated.swift
+--exclude **/*.graphql.swift
+--exclude **/*.pb.swift
+--exclude Modules/Sources/Events/Codegen/common/*.pb.swift
+--exclude Modules/Sources/WDSCore/Tokens/*.swift
+
+# Exception: Allow formatting Rive generated files
+--unexclude Modules/Sources/Animation/Generated/Rive
