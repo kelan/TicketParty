@@ -17,6 +17,7 @@ public struct TicketPartyRootView: View {
     @State private var isPresentingCreateProject = false
     @State private var isPresentingCreateTicket = false
     @State private var ticketDraft = TicketDraft()
+    @State private var codexViewModel = CodexViewModel()
 
     public init() {}
 
@@ -30,6 +31,10 @@ public struct TicketPartyRootView: View {
 
                     NavigationLink(value: SidebarSelection.allProjects) {
                         Label("All Projects", systemImage: "tablecells")
+                    }
+
+                    NavigationLink(value: SidebarSelection.codex) {
+                        Label("Codex", systemImage: "terminal")
                     }
                 }
 
@@ -75,6 +80,9 @@ public struct TicketPartyRootView: View {
             case .allProjects:
                 OverallKanbanView(projects: projects)
 
+            case .codex:
+                CodexStatusView(projects: projects)
+
             case let .project(projectID):
                 if let project = projects.first(where: { $0.id == projectID }) {
                     ProjectDetailView(project: project, onRequestNewTicket: presentNewTicketSheet)
@@ -116,6 +124,7 @@ public struct TicketPartyRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyNewTicketRequested)) { _ in
             presentNewTicketSheet()
         }
+        .environment(codexViewModel)
     }
 
     private func createProject(_ draft: ProjectDraft) {
@@ -123,6 +132,7 @@ public struct TicketPartyRootView: View {
             name: draft.name,
             statusText: draft.statusText,
             summary: draft.summary,
+            workingDirectory: draft.normalizedWorkingDirectory,
             createdAt: .now,
             updatedAt: .now
         )

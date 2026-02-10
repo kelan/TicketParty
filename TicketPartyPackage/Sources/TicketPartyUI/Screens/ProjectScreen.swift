@@ -54,6 +54,7 @@ struct ProjectDetailView: View {
 
     var body: some View {
         ProjectWorkspaceView(
+            project: project,
             filteredTickets: filteredTickets,
             selectedTicketID: $selectedTicketID,
             selectedPriorityFilter: $selectedPriorityFilter,
@@ -97,7 +98,8 @@ struct ProjectDetailView: View {
                 initialDraft: ProjectDraft(
                     name: project.name,
                     statusText: project.statusText,
-                    summary: project.summary
+                    summary: project.summary,
+                    workingDirectory: project.workingDirectory ?? ""
                 ),
                 onSubmit: applyProjectEdits
             )
@@ -138,6 +140,7 @@ struct ProjectDetailView: View {
         project.name = draft.name
         project.statusText = draft.statusText
         project.summary = draft.summary
+        project.workingDirectory = draft.normalizedWorkingDirectory
         project.updatedAt = .now
 
         do {
@@ -219,6 +222,7 @@ struct ProjectDetailView: View {
 }
 
 private struct ProjectWorkspaceView: View {
+    let project: Project
     let filteredTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
     @Binding var selectedPriorityFilter: TicketPriority?
@@ -262,7 +266,7 @@ private struct ProjectWorkspaceView: View {
 
             Divider()
 
-            ProjectTicketDetailPanel(ticket: selectedTicket)
+            ProjectTicketDetailPanel(project: project, ticket: selectedTicket)
                 .frame(width: 280)
         }
         .overlay(alignment: .bottomLeading) {
@@ -306,6 +310,8 @@ private struct ProjectFiltersPanel: View {
 
 private struct ProjectTicketDetailPanel: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(CodexViewModel.self) private var codexViewModel
+    let project: Project
     let ticket: Ticket?
 
     var body: some View {
@@ -328,6 +334,29 @@ private struct ProjectTicketDetailPanel: View {
                                 Text(severity.title).tag(severity)
                             }
                         }
+                    }
+
+                    Section("Codex") {
+                        Button("Send to Codex") {
+                            Task {
+                                await codexViewModel.send(ticket: ticket, project: project)
+                            }
+                        }
+
+                        if let error = codexViewModel.ticketErrors[ticket.id], error.isEmpty == false {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+
+                        ScrollView {
+                            let output = codexViewModel.output(for: ticket.id)
+                            Text(output.isEmpty ? "No output yet." : output)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
+                        .frame(minHeight: 180)
                     }
                 }
             } else {
@@ -402,6 +431,13 @@ struct ProjectEditorSheet: View {
                     TextField("Summary", text: $draft.summary, axis: .vertical)
                         .lineLimit(3 ... 6)
                 }
+
+                Section("Codex") {
+                    TextField("Working Directory", text: $draft.workingDirectory)
+                    Text("Required to run Codex for this project.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .navigationTitle(title)
             .toolbar {
@@ -427,6 +463,7 @@ struct ProjectEditorSheet: View {
 #Preview {
     ProjectDetailView(project: ProjectPreviewData.project)
         .modelContainer(ProjectPreviewData.container)
+        .environment(CodexViewModel())
 }
 
 @MainActor

@@ -8,6 +8,7 @@ public final class Project {
     public var name: String
     public var statusText: String
     public var summary: String
+    public var workingDirectory: String?
     public var createdAt: Date
     public var updatedAt: Date
     public var archivedAt: Date?
@@ -17,6 +18,7 @@ public final class Project {
         name: String,
         statusText: String = "",
         summary: String = "",
+        workingDirectory: String? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
         archivedAt: Date? = nil
@@ -25,6 +27,7 @@ public final class Project {
         self.name = name
         self.statusText = statusText
         self.summary = summary
+        self.workingDirectory = workingDirectory
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.archivedAt = archivedAt
