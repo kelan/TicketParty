@@ -28,6 +28,13 @@ public enum TicketPartyPersistence {
     }
 
     private static func sharedStoreURL() throws -> URL {
+        if let overridePath = ProcessInfo.processInfo.environment["TICKETPARTY_STORE_PATH"], overridePath.isEmpty == false {
+            let overrideURL = URL(fileURLWithPath: overridePath)
+            let directoryURL = overrideURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            return overrideURL
+        }
+
         let appSupportURL = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
 
