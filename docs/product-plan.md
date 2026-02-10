@@ -1,4 +1,4 @@
-# TaskTracker Product Plan
+# TicketParty Product Plan
 
 ## Vision
 Build a local-first macOS task tracker that behaves like a lightweight bug tracker for human + LLM agent collaboration.

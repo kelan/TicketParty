@@ -1,4 +1,4 @@
-# TaskTracker Technical Plan
+# TicketParty Technical Plan
 
 ## Stack and App Shape
 - Platform: macOS app first (SwiftUI).
@@ -14,46 +14,77 @@
 - `TaskDigest`: summary/query engine for "while you were away."
 
 ## SwiftData Domain Model (MVP+)
-- `Task`
-- `id` (UUID), `ticketNumber` (Int), `displayID` (String like `TT-42`)
-- `title`, `description`, `priority`, `severity`
-- `workflowID`, `stateID`, `assigneeID`
-- `createdAt`, `updatedAt`, `closedAt?`, `archivedAt?`
-- `Note`
-- `id`, `taskID`, `body`, `authorType` (owner/agent/system), `createdAt`, `updatedAt`
-- `Comment`
-- `id`, `taskID`, `authorType`, `authorID`, `type`
-- `body`, `createdAt`
-- `inReplyToCommentID?`
-- `requiresResponse` (Bool), `resolvedAt?`
-- `Workflow`
-- `id`, `name`, `isDefault`, `createdAt`, `updatedAt`
-- `WorkflowState`
-- `id`, `workflowID`, `key`, `displayName`, `orderIndex`, `isTerminal`
-- `WorkflowTransition`
-- `id`, `workflowID`, `fromStateID`, `toStateID`, `label`, `guardExpression?`
-- `Assignment`
-- `id`, `taskID`, `assigneeID`, `assignedBy`, `assignedAt`, `unassignedAt?`
-- `Agent`
-- `id`, `name`, `kind` (local CLI, API-backed, manual), `isActive`
-- `TaskEvent` (immutable history log)
-- `id`, `taskID`, `eventType`, `actorType`, `actorID`, `timestamp`
-- `payloadJSON` (field diffs, transition data, metadata)
-- `SessionMarker`
-- `id`, `type` (`appActive`, `appInactive`, `digestViewed`), `timestamp`
+- Goal: support local-first issue tracking with append-only history and deterministic CLI automation.
+- Primary key convention: UUID `id` for every entity.
+- Time convention: all timestamps are UTC `Date` values.
+- Soft-delete convention: use `archivedAt` and `closedAt`; do not hard-delete in normal workflows.
+- Field naming note: task long-form text is conceptually `description`; implementation may store it as `taskDescription` for SwiftData compatibility.
+- Workflow and state definitions are code-owned enums, not dynamic records.
+- Persist enum values as raw strings in SwiftData for queryability and migration stability.
+
+### Core Tables
+| Entity | Purpose | Core Fields | Constraints and Query Hints |
+| --- | --- | --- | --- |
+| `Task` | Main work item and current-state projection | `id`, `ticketNumber`, `displayID`, `title`, `description`, `priority`, `severity`, `currentWorkflow`, `currentState`, `currentStateChangedAt`, `assigneeID`, `createdAt`, `updatedAt`, `closedAt?`, `archivedAt?` | Unique: `id`, `ticketNumber`, `displayID`; index `currentState`, `assigneeID`, `updatedAt`, `archivedAt` |
+| `TaskStateTransition` | Immutable state transition history | `id`, `taskID`, `workflow`, `fromState`, `toState`, `transitionedAt`, `actorType`, `actorID`, `reason?`, `metadataJSON` | Index `taskID + transitionedAt DESC`; index `toState + transitionedAt`; append-only |
+| `TaskEvent` | Generic immutable audit/event log | `id`, `taskID`, `eventType`, `actorType`, `actorID`, `timestamp`, `payloadJSON` | Index `taskID + timestamp`; index `eventType + timestamp` |
+| `Note` | Long-form durable context | `id`, `taskID`, `body`, `authorType`, `createdAt`, `updatedAt` | Index `taskID + updatedAt` |
+| `Comment` | Structured conversation entry | `id`, `taskID`, `authorType`, `authorID`, `type`, `body`, `createdAt`, `inReplyToCommentID?`, `requiresResponse`, `resolvedAt?` | Index `taskID + createdAt`; index `requiresResponse + resolvedAt` |
+| `Assignment` | Assignment timeline record | `id`, `taskID`, `assigneeID`, `assignedBy`, `assignedAt`, `unassignedAt?` | Index `taskID + assignedAt`; index `assigneeID + unassignedAt` |
+| `Agent` | Known assignee actor | `id`, `name`, `kind`, `isActive` | Unique `id`; optional unique-by-name policy |
+| `SessionMarker` | Presence and digest boundaries | `id`, `type`, `timestamp` | Index `type + timestamp` |
+
+### Relationship Rules
+- `Task` to `Note`: one-to-many by `Note.taskID`.
+- `Task` to `Comment`: one-to-many by `Comment.taskID`.
+- `Task` to `TaskEvent`: one-to-many by `TaskEvent.taskID`.
+- `Task` to `TaskStateTransition`: one-to-many by `TaskStateTransition.taskID`.
+- `Task` to `Assignment`: one-to-many by `Assignment.taskID`.
+- `Task` to `Agent`: many-to-one via `Task.assigneeID`.
+- `Comment` reply threading: optional self-reference through `inReplyToCommentID`.
+
+### Enum Domains
+- `priority`: `low`, `medium`, `high`, `urgent`.
+- `severity`: `trivial`, `minor`, `major`, `critical`.
+- `workflow` (code-defined): start with `standard`; extend in code only.
+- `state` (code-defined for `standard`): `backlog`, `ready`, `in_progress`, `review`, `done`.
+- `comment.type`: `update`, `question`, `answer`, `decision`, `status_change`.
+- `authorType` and `actorType`: `owner`, `agent`, `system`.
+- `agent.kind`: `local_cli`, `api_backed`, `manual`.
+- `sessionMarker.type`: `app_active`, `app_inactive`, `digest_viewed`.
+
+### Integrity and Lifecycle Rules
+- `Task.updatedAt` must change on every mutation to support optimistic concurrency checks.
+- `Task.displayID` follows format `TT-<ticketNumber>` and is immutable after creation.
+- `Task.currentState` stores the latest state enum raw value for fast filtering and sorting.
+- `Task.currentStateChangedAt` tracks when the current state last changed.
+- Closing a task sets `closedAt`; reopening clears `closedAt`.
+- Archiving sets `archivedAt`; archived tasks are excluded from default list queries.
+- `Comment.requiresResponse == true` implies unresolved until `resolvedAt` is set.
+- Every state change appends one `TaskStateTransition` row and one `TaskEvent` row in the same save transaction as the `Task.currentState` update.
+- All non-state mutations also append `TaskEvent` rows in the same transaction.
+
+### Current-State Query Strategy
+- Current state reads come directly from `Task.currentState` and `Task.currentStateChangedAt` for O(1)-style row access.
+- Historical state analysis reads `TaskStateTransition`, not `Task`, to avoid scanning generic events.
+- "Latest transition per task" query pattern:
+- Filter transitions by `taskID`.
+- Sort `transitionedAt DESC`.
+- Take first row.
 
 ## History Strategy (Forever)
 - Append-only `TaskEvent` for all meaningful changes.
-- Never hard-delete task records or event rows in normal operation.
+- Append-only `TaskStateTransition` for all state changes.
+- Never hard-delete task records, transition rows, or event rows in normal operation.
 - Use soft-delete/archive for hidden records.
-- Build digest and audit views from event stream + current projections.
-- Add indexes for `taskID`, `timestamp`, `eventType`, `requiresResponse`.
+- Build digest and audit views from transitions/events + current task projection.
+- Add indexes for `taskID`, `timestamp`, `eventType`, `toState`, `requiresResponse`.
 
 ## Workflow Engine
-- Validate transitions against `WorkflowTransition` records.
+- Validate transitions against code-defined transition map (shared in `TaskCore`).
 - Enforce in shared domain layer so UI and CLI behave identically.
-- Allow per-task workflow binding at creation.
-- Keep system workflow available as fallback to avoid broken tasks when custom workflows change.
+- Persist only enum raw values in database (`currentWorkflow`, `currentState`).
+- Start with one code-defined workflow (`standard`); add additional presets in code when needed.
 
 ## Structured Comments Design
 - Keep structure lightweight:
@@ -72,46 +103,14 @@
 - Agent activity volume by assignee.
 - Expose digest as shared service used by app and CLI.
 
-## CLI Design
-- Binary name: `tp`.
-- Build via Swift Package executable target or Xcode command line target.
-- Parse commands using `swift-argument-parser`.
-- Read/write same SwiftData store location as app.
-- Define one shared persistence bootstrap in `TaskPersistence` used by both app and CLI.
-- Use an explicit store path so both targets are guaranteed to hit the same file:
-- `~/Library/Application Support/TicketParty/TicketParty.store`.
-- Keep CloudKit disabled for CLI/local-first mode unless sync mode is explicitly enabled.
-- Subcommand execution pattern:
-- Create/open shared `ModelContainer`.
-- Create `ModelContext` for the command.
-- Run fetch/insert/update/delete operations.
-- Call `save()` for all write paths.
-- Key commands:
-- `tp task create --title --workflow --state --priority`
-- `tp task list --state --assignee --needs-response --json`
-- `tp task show TT-42 --json`
-- `tp task assign TT-42 --agent coder-1`
-- `tp task transition TT-42 --to in_review`
-- `tp note add TT-42 --body`
-- `tp comment add TT-42 --type update --body`
-- `tp question ask TT-42 --body`
-- `tp question answer TT-42 --comment-id C-99 --body`
-- `tp digest since --last-active --json`
-
-## Compatibility with `bd`
-- Do not require full command compatibility initially.
-- Add aliases for common flows where low-cost:
-- `tp new` -> `tp task create`
-- `tp list` -> `tp task list`
-- `tp show` -> `tp task show`
-- Prioritize good JSON output over exact command parity.
+## CLI Plan
+- CLI design details moved to `docs/cli-plan.md`.
 
 ## Reliability and Safety
 - Use optimistic concurrency marker (`updatedAt`) to detect conflicting writes.
 - Emit `TaskEvent` within same transaction as source update.
 - Validate required fields and transition rules in one shared service.
-- Build minimal backup/export feature early:
-- `tp export --format jsonl`.
+- Build minimal backup/export feature early.
 
 ## Testing Strategy
 - Domain tests for transition validation and comment/question rules.

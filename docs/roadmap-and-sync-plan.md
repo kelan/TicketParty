@@ -1,4 +1,4 @@
-# TaskTracker Roadmap and Sync Plan
+# TicketParty Roadmap and Sync Plan
 
 ## Delivery Strategy
 Ship in milestones that preserve local-first operation while preparing for cross-device sync without custom server infrastructure.
