@@ -6,8 +6,8 @@ Enable "send ticket to Codex" from the app, with one long-lived Codex sidecar pr
 ## Scope for Phase 2 (Implementation)
 1. Launch and manage one sidecar subprocess per project.
 2. Add optional project working directory (`workingDirectory`), but block Codex start when missing.
-3. Send newline-delimited JSON commands over sidecar stdin.
-4. Parse newline-delimited JSON responses from sidecar stdout.
+3. Send newline-delimited JSON command objects over sidecar stdin.
+4. Read newline-delimited sidecar stdout and treat each line as displayable string output.
 5. Add UI:
    - Sidebar status entry for Codex.
    - "Send to Codex" button in ticket detail panel.
@@ -49,7 +49,7 @@ Create a dedicated actor: `CodexManager`.
 - Start sidecar for a project on demand.
 - Keep stdin/stdout handles alive.
 - Serialize outbound command writes.
-- Read/parse stdout lines and route responses to ticket output buffers.
+- Read stdout lines and route raw line output to ticket output buffers.
 - Publish status/output snapshots for UI.
 
 ### Core Types
@@ -60,7 +60,7 @@ Create a dedicated actor: `CodexManager`.
   - `stdoutTask: Task<Void, Never>`
   - `stderrTask: Task<Void, Never>` (optional but recommended for diagnostics)
 - `CodexTicketLog`: in-memory per ticket accumulated text
-- `PendingRequest`: map request id -> `(projectID, ticketID, sentAt)`
+- `ActiveThreadByProject`: map `projectID -> ticketID` used to route raw stdout lines in first pass
 
 ### Sidecar Launch
 - Executable: `node` (via `/usr/bin/env` + `node` argument for reliability)
@@ -75,18 +75,24 @@ Validation before launch:
 
 If validation fails, return user-visible error and do not spawn process.
 
-### JSON I/O Contract
-Use newline-delimited JSON (JSONL):
-- One command object per line written to stdin.
-- One response object per line read from stdout.
+### Sidecar I/O Contract
+Stdin uses newline-delimited JSON (one object per line):
+- Required fields:
+  - `threadId`: ticket ID string (UUID)
+  - `prompt`: full prompt text for this send
+- First-pass send payload example:
+```json
+{"threadId":"<ticket-uuid>","prompt":"<ticket-title>\n<ticket-description>"}
+```
 
-Implementation notes:
-- `JSONEncoder` for command structs.
-- Append `\n` after each encoded object.
-- Read stdout as bytes -> split lines -> decode each line with `JSONDecoder`.
-- Handle malformed lines by appending a parse error to project/ticket output and keeping session alive.
+Prompt composition rule:
+- Always build prompt as `title + "\n" + description`.
+- If description is empty, the prompt still includes the newline after title.
 
-Protocol payloads should match the sidecar's expected "standard Codex JSON command format". We will model the exact schema in Swift once we wire implementation (request id, command type, and command payload fields).
+Stdout handling in first pass:
+- Read stdout as bytes and split by newline.
+- Treat each full line as opaque text returned by Codex SDK.
+- Append lines directly to the selected ticket output buffer as strings (no structured response decoding required in app).
 
 ## UI Plan
 ### 1) Sidebar Codex Entry
@@ -117,36 +123,33 @@ In `ProjectTicketDetailPanel`:
   - Keep latest response visible for selected ticket.
 
 ## Dependency Injection / State Flow
-Actors are not directly bindable in SwiftUI. Use a bridge object:
-- `@MainActor final class CodexViewModel: ObservableObject`
-  - `@Published var projectStatuses: [UUID: CodexProjectStatus]`
-  - `@Published var ticketOutput: [UUID: String]`
-  - `@Published var ticketErrors: [UUID: String]`
+Actors are not directly bindable in SwiftUI. Use an Observation bridge type:
+- `@MainActor @Observable final class CodexViewModel`
+  - `var projectStatuses: [UUID: CodexProjectStatus]`
+  - `var ticketOutput: [UUID: String]`
+  - `var ticketErrors: [UUID: String]`
 - `CodexViewModel` owns/uses `CodexManager` and exposes async methods:
   - `sendTicket(ticket: Ticket, project: Project)`
   - `status(for projectID: UUID)`
   - `output(for ticketID: UUID)`
 
-Inject once from app root into `TicketPartyRootView` via `.environmentObject(...)`.
+Inject once from app root into `TicketPartyRootView` via SwiftUI environment using Observation-friendly patterns (for example, `.environment(codexViewModel)` and `@Environment(CodexViewModel.self)` in consumers).
 
 ## Command Payload for "Send Ticket"
-First command shape for sidecar send:
-- include ticket id/display id
-- title
-- description
-- priority/severity
-- project id/name
+First command shape for sidecar send is fixed:
+- `threadId`: `ticket.id.uuidString`
+- `prompt`: `ticket.title + "\n" + ticket.ticketDescription`
 
 Manager behavior:
 1. Ensure session for project is running (start lazily if needed).
-2. Encode request JSON.
-3. Write command line to stdin.
-4. Track pending request id -> ticket id.
-5. Route sidecar responses back into that ticket's output buffer.
+2. Set active thread routing for project to the selected ticket ID.
+3. Encode `{threadId, prompt}` JSON.
+4. Write one JSON line to stdin.
+5. Append raw stdout lines to that ticket's output buffer for display.
 
 ## Error Handling Strategy
 - Startup errors: missing working dir, invalid path, sidecar launch failures.
-- Runtime errors: broken pipe, process exit, decode failures.
+- Runtime errors: broken pipe, process exit, read/write failures.
 - For exited process:
   - mark status `error(...)`
   - clear session
@@ -159,11 +162,11 @@ User-facing policy:
 ## Testing Plan (Phase 2)
 1. Unit tests for project working directory normalization.
 2. Unit tests for launch validation logic (missing path, non-directory, missing sidecar script).
-3. Unit tests for newline JSON encode/decode helpers.
+3. Unit tests for command-line encode helper (`{threadId, prompt}` -> single JSON line).
 4. Integration-style tests with a fake process adapter (preferred) or fixture pipes to verify:
    - lazy start once per project
    - command write per send
-   - response routing to correct ticket output
+   - raw stdout line routing to correct ticket output
    - restart after process death
 
 ## Implementation Sequence (Phase 2)
@@ -176,7 +179,6 @@ User-facing policy:
 7. Add tests and run quality gates.
 
 ## Open Items to Confirm Before/While Implementing
-- Exact sidecar request/response JSON schema field names.
 - Whether stderr should be merged into ticket output or shown separately.
 - Whether ticket output should persist to store (plan assumes in-memory for first pass).
 - Whether "Send to Codex" should include prior comments/history or only current ticket fields.
