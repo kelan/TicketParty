@@ -33,6 +33,18 @@ struct TicketPartyApp: App {
                 }
                 .keyboardShortcut("n")
             }
+
+            CommandMenu("Tickets") {
+                Button("Move Selected Ticket Up") {
+                    NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketUpRequested, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .control])
+
+                Button("Move Selected Ticket Down") {
+                    NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketDownRequested, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .control])
+            }
         }
 
         #if os(macOS)

@@ -115,6 +115,12 @@ struct ProjectDetailView: View {
                 )
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketUpRequested)) { _ in
+            moveSelectedTicket(by: -1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketDownRequested)) { _ in
+            moveSelectedTicket(by: 1)
+        }
         .onAppear {
             if selectedTicketID == nil {
                 selectedTicketID = filteredTickets.first?.id
@@ -168,14 +174,39 @@ struct ProjectDetailView: View {
         var reorderedIDs = filteredTickets.map(\.id)
         reorderedIDs.move(fromOffsets: source, toOffset: destination)
 
-        guard let movedIndex = reorderedIDs.firstIndex(of: movedTicketID) else { return }
+        persistMove(ticketID: movedTicketID, reorderedIDs: reorderedIDs)
+    }
+
+    private func moveSelectedTicket(by direction: Int) {
+        guard isManualSortEnabled else { return }
+        guard let selectedTicketID else { return }
+        guard let currentIndex = filteredTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
+
+        let destination: Int
+        if direction < 0 {
+            guard currentIndex > 0 else { return }
+            destination = currentIndex - 1
+        } else if direction > 0 {
+            guard currentIndex < (filteredTickets.count - 1) else { return }
+            destination = currentIndex + 2
+        } else {
+            return
+        }
+
+        var reorderedIDs = filteredTickets.map(\.id)
+        reorderedIDs.move(fromOffsets: IndexSet(integer: currentIndex), toOffset: destination)
+        persistMove(ticketID: selectedTicketID, reorderedIDs: reorderedIDs)
+    }
+
+    private func persistMove(ticketID: UUID, reorderedIDs: [UUID]) {
+        guard let movedIndex = reorderedIDs.firstIndex(of: ticketID) else { return }
         let beforeID = movedIndex > 0 ? reorderedIDs[movedIndex - 1] : nil
         let afterID = (movedIndex + 1) < reorderedIDs.count ? reorderedIDs[movedIndex + 1] : nil
 
         do {
             try TicketOrdering.moveTicket(
                 context: modelContext,
-                ticketID: movedTicketID,
+                ticketID: ticketID,
                 projectID: project.id,
                 stateID: nil,
                 beforeTicketID: beforeID,

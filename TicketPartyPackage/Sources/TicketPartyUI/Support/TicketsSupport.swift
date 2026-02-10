@@ -61,4 +61,6 @@ extension TicketSeverity {
 
 public extension Notification.Name {
     static let ticketPartyNewTicketRequested = Notification.Name("TicketParty.newTicketRequested")
+    static let ticketPartyMoveSelectedTicketUpRequested = Notification.Name("TicketParty.moveSelectedTicketUpRequested")
+    static let ticketPartyMoveSelectedTicketDownRequested = Notification.Name("TicketParty.moveSelectedTicketDownRequested")
 }
