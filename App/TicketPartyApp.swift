@@ -5,6 +5,7 @@
 //  Created by Kelan Champagne on 2/9/26.
 //
 
+import Foundation
 import SwiftData
 import SwiftUI
 import TicketPartyDataStore
@@ -25,6 +26,14 @@ struct TicketPartyApp: App {
             TicketPartyRootView()
         }
         .modelContainer(sharedModelContainer)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New Ticket") {
+                    NotificationCenter.default.post(name: .ticketPartyNewTicketRequested, object: nil)
+                }
+                .keyboardShortcut("n")
+            }
+        }
 
         #if os(macOS)
             Settings {

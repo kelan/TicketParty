@@ -15,6 +15,8 @@ public struct TicketPartyRootView: View {
 
     @State private var selection: SidebarSelection? = .activity
     @State private var isPresentingCreateProject = false
+    @State private var isPresentingCreateTicket = false
+    @State private var ticketDraft = TicketDraft()
 
     public init() {}
 
@@ -75,7 +77,7 @@ public struct TicketPartyRootView: View {
 
             case let .project(projectID):
                 if let project = projects.first(where: { $0.id == projectID }) {
-                    ProjectDetailView(project: project)
+                    ProjectDetailView(project: project, onRequestNewTicket: presentNewTicketSheet)
                         .id(project.id)
                 } else {
                     ContentUnavailableView("Project Not Found", systemImage: "questionmark.folder")
@@ -90,6 +92,15 @@ public struct TicketPartyRootView: View {
                 onSubmit: createProject
             )
         }
+        .sheet(isPresented: $isPresentingCreateTicket) {
+            TicketEditorSheet(
+                title: "New Ticket",
+                submitLabel: "Create",
+                projects: projects,
+                initialDraft: ticketDraft,
+                onSubmit: createTicket
+            )
+        }
         .onChange(of: projects.map(\.id)) { _, projectIDs in
             guard let selection else {
                 self.selection = .activity
@@ -101,6 +112,9 @@ public struct TicketPartyRootView: View {
             {
                 self.selection = .activity
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyNewTicketRequested)) { _ in
+            presentNewTicketSheet()
         }
     }
 
@@ -122,6 +136,56 @@ public struct TicketPartyRootView: View {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
+
+    private func createTicket(_ draft: TicketDraft) {
+        let normalizedDraft = draft.normalized
+        guard let projectID = normalizedDraft.projectID else { return }
+
+        var descriptor = FetchDescriptor<Ticket>(
+            sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .reverse)]
+        )
+        descriptor.fetchLimit = 1
+
+        let currentMaxNumber: Int
+        do {
+            currentMaxNumber = try modelContext.fetch(descriptor).first?.ticketNumber ?? 0
+        } catch {
+            currentMaxNumber = 0
+        }
+        let nextTicketNumber = currentMaxNumber + 1
+
+        let ticket = Ticket(
+            ticketNumber: nextTicketNumber,
+            displayID: "TT-\(nextTicketNumber)",
+            projectID: projectID,
+            title: normalizedDraft.title,
+            description: normalizedDraft.description,
+            priority: normalizedDraft.priority,
+            severity: normalizedDraft.severity,
+            createdAt: .now,
+            updatedAt: .now
+        )
+
+        modelContext.insert(ticket)
+
+        do {
+            try modelContext.save()
+            selection = .project(projectID)
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+
+    private func presentNewTicketSheet(_ preferredProjectID: UUID? = nil) {
+        let currentProjectID: UUID? = if case let .project(projectID) = selection {
+            projectID
+        } else {
+            nil
+        }
+
+        ticketDraft = TicketDraft(projectID: preferredProjectID ?? currentProjectID ?? projects.first?.id)
+        isPresentingCreateTicket = true
+    }
 }
 
 #Preview {
@@ -130,32 +194,44 @@ public struct TicketPartyRootView: View {
 }
 
 @MainActor private let previewContainer: ModelContainer = {
-    let schema = Schema([Project.self])
+    let schema = Schema([Project.self, Ticket.self])
     let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
 
     do {
         let container = try ModelContainer(for: schema, configurations: [configuration])
         let context = container.mainContext
 
-        let projects: [Project] = [
+        let projects: [Project] = SampleData.projects.map { stubProject in
             Project(
-                name: "Growth Site",
-                statusText: "Release candidate",
-                summary: "Final QA and launch checklist in progress."
-            ),
-            Project(
-                name: "iOS App",
-                statusText: "Stabilizing",
-                summary: "Crash fixes and polish for the next App Store build."
-            ),
-            Project(
-                name: "Ops Automation",
-                statusText: "Healthy",
-                summary: "Credential rotation and monitoring updates completed."
-            ),
-        ]
+                id: stubProject.id,
+                name: stubProject.name,
+                statusText: stubProject.statusText,
+                summary: stubProject.summary
+            )
+        }
 
         projects.forEach(context.insert)
+
+        var ticketNumber = 1
+        for project in projects {
+            let previewTickets = SampleData.tickets(for: project)
+
+            for ticket in previewTickets {
+                context.insert(
+                    Ticket(
+                        ticketNumber: ticketNumber,
+                        displayID: "TT-\(ticketNumber)",
+                        projectID: project.id,
+                        title: ticket.title,
+                        description: ticket.latestNote,
+                        priority: ticket.priority.ticketPriority,
+                        severity: ticket.priority.ticketSeverity
+                    )
+                )
+                ticketNumber += 1
+            }
+        }
+
         try context.save()
         return container
     } catch {

@@ -1,5 +1,13 @@
 import Foundation
 import TicketPartyDataStore
+import TicketPartyModels
+
+struct StubProject: Identifiable, Hashable {
+    let id: UUID
+    let name: String
+    let statusText: String
+    let summary: String
+}
 
 enum StubTicketState: String, CaseIterable, Identifiable {
     case backlog
@@ -38,6 +46,30 @@ enum StubPriority: String {
     }
 }
 
+extension StubPriority {
+    var ticketPriority: TicketPriority {
+        switch self {
+        case .low:
+            return .low
+        case .medium:
+            return .medium
+        case .high:
+            return .high
+        }
+    }
+
+    var ticketSeverity: TicketSeverity {
+        switch self {
+        case .low:
+            return .minor
+        case .medium:
+            return .major
+        case .high:
+            return .critical
+        }
+    }
+}
+
 struct StubTicket: Identifiable, Hashable {
     let id: String
     let title: String
@@ -55,6 +87,27 @@ struct StubActivityEvent: Identifiable, Hashable {
 }
 
 enum SampleData {
+    static let projects: [StubProject] = [
+        StubProject(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111") ?? UUID(),
+            name: "Growth Site",
+            statusText: "Release candidate",
+            summary: "Final QA and launch checklist in progress."
+        ),
+        StubProject(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222") ?? UUID(),
+            name: "iOS App",
+            statusText: "Stabilizing",
+            summary: "Crash fixes and polish for the next App Store build."
+        ),
+        StubProject(
+            id: UUID(uuidString: "33333333-3333-3333-3333-333333333333") ?? UUID(),
+            name: "Ops Automation",
+            statusText: "Healthy",
+            summary: "Credential rotation and monitoring updates completed."
+        ),
+    ]
+
     static let activityEvents: [StubActivityEvent] = [
         StubActivityEvent(
             id: "activity_1",

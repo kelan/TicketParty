@@ -1,30 +1,79 @@
 import SwiftData
 import SwiftUI
 import TicketPartyDataStore
+import TicketPartyModels
 
 struct ProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Bindable var project: Project
+    @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse), SortDescriptor(\Ticket.ticketNumber, order: .reverse)]) private var allTickets: [Ticket]
 
-    @State private var selectedTicketID: String?
-    @State private var selectedStateFilter: StubTicketState?
+    @Bindable var project: Project
+    let onRequestNewTicket: (UUID?) -> Void
+
+    @State private var selectedTicketID: UUID?
+    @State private var selectedPriorityFilter: TicketPriority?
     @State private var showHighPriorityOnly = false
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
+    @State private var ticketEditSession: TicketEditSession?
+
+    init(project: Project, onRequestNewTicket: @escaping (UUID?) -> Void = { _ in }) {
+        self.project = project
+        self.onRequestNewTicket = onRequestNewTicket
+    }
+
+    private var tickets: [Ticket] {
+        allTickets.filter { ticket in
+            ticket.archivedAt == nil && ticket.projectID == project.id
+        }
+    }
+
+    private var filteredTickets: [Ticket] {
+        tickets.filter { ticket in
+            let priorityMatches = selectedPriorityFilter == nil || ticket.priority == selectedPriorityFilter
+            let highPriorityMatches = showHighPriorityOnly == false || ticket.priority == .high || ticket.priority == .urgent
+            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
+            return priorityMatches && highPriorityMatches && searchMatches
+        }
+    }
+
+    private var selectedTicket: Ticket? {
+        guard let selectedTicketID else { return nil }
+        return tickets.first { $0.id == selectedTicketID }
+    }
+
+    private var availableProjects: [Project] {
+        [project]
+    }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ProjectWorkspaceView(
-                project: project,
-                selectedTicketID: $selectedTicketID,
-                selectedStateFilter: $selectedStateFilter,
-                showHighPriorityOnly: $showHighPriorityOnly,
-                searchText: $searchText
-            )
-        }
+        ProjectWorkspaceView(
+            filteredTickets: filteredTickets,
+            selectedTicketID: $selectedTicketID,
+            selectedPriorityFilter: $selectedPriorityFilter,
+            showHighPriorityOnly: $showHighPriorityOnly,
+            searchText: $searchText,
+            selectedTicket: selectedTicket
+        )
         .navigationTitle(project.name)
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    onRequestNewTicket(project.id)
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .help("New Ticket")
+
+                if let selectedTicket {
+                    Button {
+                        ticketEditSession = TicketEditSession(id: selectedTicket.id)
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .help("Edit Ticket")
+                }
+
                 Button {
                     isPresentingEditProject = true
                 } label: {
@@ -45,10 +94,29 @@ struct ProjectDetailView: View {
                 onSubmit: applyProjectEdits
             )
         }
+        .sheet(item: $ticketEditSession) { session in
+            if let ticket = allTickets.first(where: { $0.id == session.id }) {
+                TicketEditorSheet(
+                    title: "Edit Ticket",
+                    submitLabel: "Save",
+                    projects: availableProjects,
+                    initialDraft: TicketDraft(ticket: ticket),
+                    onSubmit: { draft in
+                        applyTicketEdits(ticketID: session.id, draft: draft)
+                    }
+                )
+            }
+        }
         .onAppear {
             if selectedTicketID == nil {
-                selectedTicketID = PreviewRuntime.usesStubData ? SampleData.tickets(for: project).first?.id : nil
+                selectedTicketID = filteredTickets.first?.id
             }
+        }
+        .onChange(of: filteredTickets.map(\.id)) { _, ids in
+            if let selectedTicketID, ids.contains(selectedTicketID) {
+                return
+            }
+            self.selectedTicketID = ids.first
         }
     }
 
@@ -64,37 +132,39 @@ struct ProjectDetailView: View {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
+
+    private func applyTicketEdits(ticketID: UUID, draft: TicketDraft) {
+        guard let ticket = allTickets.first(where: { $0.id == ticketID }) else {
+            return
+        }
+
+        ticket.projectID = draft.projectID
+        ticket.title = draft.title
+        ticket.ticketDescription = draft.description
+        ticket.priority = draft.priority
+        ticket.severity = draft.severity
+        ticket.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
 }
 
 private struct ProjectWorkspaceView: View {
-    let project: Project
-    @Binding var selectedTicketID: String?
-    @Binding var selectedStateFilter: StubTicketState?
+    let filteredTickets: [Ticket]
+    @Binding var selectedTicketID: UUID?
+    @Binding var selectedPriorityFilter: TicketPriority?
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
-
-    private var tickets: [StubTicket] {
-        PreviewRuntime.usesStubData ? SampleData.tickets(for: project) : []
-    }
-
-    private var filteredTickets: [StubTicket] {
-        tickets.filter { ticket in
-            let stateMatches = selectedStateFilter == nil || ticket.state == selectedStateFilter
-            let priorityMatches = showHighPriorityOnly == false || ticket.priority == .high
-            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
-            return stateMatches && priorityMatches && searchMatches
-        }
-    }
-
-    private var selectedTicket: StubTicket? {
-        guard let selectedTicketID else { return nil }
-        return filteredTickets.first { $0.id == selectedTicketID }
-    }
+    let selectedTicket: Ticket?
 
     var body: some View {
         HStack(spacing: 0) {
             ProjectFiltersPanel(
-                selectedStateFilter: $selectedStateFilter,
+                selectedPriorityFilter: $selectedPriorityFilter,
                 showHighPriorityOnly: $showHighPriorityOnly,
                 searchText: $searchText
             )
@@ -106,10 +176,11 @@ private struct ProjectWorkspaceView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(ticket.title)
                         .font(.headline)
+
                     HStack(spacing: 8) {
-                        Text(ticket.state.title)
+                        Text(ticket.displayID)
                         Text(ticket.priority.title)
-                        Text(ticket.assignee)
+                        Text(ticket.severity.title)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -121,19 +192,13 @@ private struct ProjectWorkspaceView: View {
             Divider()
 
             ProjectTicketDetailPanel(ticket: selectedTicket)
-                .frame(minWidth: 300, idealWidth: 380)
-        }
-        .onChange(of: filteredTickets.map(\.id)) { _, ids in
-            if let selectedTicketID, ids.contains(selectedTicketID) {
-                return
-            }
-            self.selectedTicketID = ids.first
+                .frame(minWidth: 300, idealWidth: 420)
         }
     }
 }
 
 private struct ProjectFiltersPanel: View {
-    @Binding var selectedStateFilter: StubTicketState?
+    @Binding var selectedPriorityFilter: TicketPriority?
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
@@ -142,15 +207,15 @@ private struct ProjectFiltersPanel: View {
             Text("Filters")
                 .font(.headline)
 
-            Picker("State", selection: $selectedStateFilter) {
-                Text("All States").tag(StubTicketState?.none)
-                ForEach(StubTicketState.allCases) { state in
-                    Text(state.title).tag(Optional(state))
+            Picker("Priority", selection: $selectedPriorityFilter) {
+                Text("All Priorities").tag(TicketPriority?.none)
+                ForEach(TicketPriority.allCases, id: \.self) { priority in
+                    Text(priority.title).tag(Optional(priority))
                 }
             }
             .pickerStyle(.menu)
 
-            Toggle("High Priority Only", isOn: $showHighPriorityOnly)
+            Toggle("High/Urgent Only", isOn: $showHighPriorityOnly)
 
             TextField("Search tickets", text: $searchText)
 
@@ -161,21 +226,21 @@ private struct ProjectFiltersPanel: View {
 }
 
 private struct ProjectTicketDetailPanel: View {
-    let ticket: StubTicket?
+    let ticket: Ticket?
 
     var body: some View {
         Group {
             if let ticket {
                 Form {
                     Section("Ticket") {
+                        LabeledContent("ID", value: ticket.displayID)
                         LabeledContent("Title", value: ticket.title)
-                        LabeledContent("State", value: ticket.state.title)
                         LabeledContent("Priority", value: ticket.priority.title)
-                        LabeledContent("Assignee", value: ticket.assignee)
+                        LabeledContent("Severity", value: ticket.severity.title)
                     }
 
-                    Section("Latest Update") {
-                        Text(ticket.latestNote)
+                    Section("Description") {
+                        Text(ticket.ticketDescription.isEmpty ? "No description yet" : ticket.ticketDescription)
                     }
                 }
             } else {
@@ -183,6 +248,10 @@ private struct ProjectTicketDetailPanel: View {
             }
         }
     }
+}
+
+private struct TicketEditSession: Identifiable {
+    let id: UUID
 }
 
 struct ProjectEditorSheet: View {
@@ -247,7 +316,7 @@ struct ProjectEditorSheet: View {
 @MainActor
 private enum ProjectPreviewData {
     static let container: ModelContainer = {
-        let schema = Schema([Project.self])
+        let schema = Schema([Project.self, Ticket.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
 
         do {
@@ -258,14 +327,36 @@ private enum ProjectPreviewData {
     }()
 
     static let project: Project = {
+        let source = SampleData.projects.first ?? StubProject(
+            id: UUID(),
+            name: "Project",
+            statusText: "Status",
+            summary: "Summary"
+        )
+
         let project = Project(
-            name: "Growth Site",
-            statusText: "Release candidate",
-            summary: "Final QA and launch checklist in progress."
+            id: source.id,
+            name: source.name,
+            statusText: source.statusText,
+            summary: source.summary
         )
 
         let context = container.mainContext
         context.insert(project)
+
+        let previewTickets = SampleData.tickets(for: project).enumerated().map { index, ticket in
+            Ticket(
+                ticketNumber: index + 1,
+                displayID: "TT-\(index + 1)",
+                projectID: project.id,
+                title: ticket.title,
+                description: ticket.latestNote,
+                priority: ticket.priority.ticketPriority,
+                severity: ticket.priority.ticketSeverity
+            )
+        }
+
+        previewTickets.forEach(context.insert)
 
         do {
             try context.save()

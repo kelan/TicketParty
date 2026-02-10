@@ -1,12 +1,20 @@
+import SwiftData
 import SwiftUI
 import TicketPartyDataStore
+import TicketPartyModels
 
 struct OverallKanbanView: View {
     let projects: [Project]
-    private let states = StubTicketState.allCases
+    private let priorities = TicketPriority.allCases
 
-    private func tickets(for project: Project) -> [StubTicket] {
-        PreviewRuntime.usesStubData ? SampleData.tickets(for: project) : []
+    @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse), SortDescriptor(\Ticket.ticketNumber, order: .reverse)]) private var tickets: [Ticket]
+
+    private func tickets(for project: Project, priority: TicketPriority) -> [Ticket] {
+        tickets.filter { ticket in
+            ticket.archivedAt == nil &&
+                ticket.projectID == project.id &&
+                ticket.priority == priority
+        }
     }
 
     var body: some View {
@@ -17,16 +25,14 @@ struct OverallKanbanView: View {
                         .font(.caption.weight(.semibold))
                         .frame(width: 180, alignment: .leading)
 
-                    ForEach(states) { state in
-                        Text(state.title)
+                    ForEach(priorities, id: \.self) { priority in
+                        Text(priority.title)
                             .font(.caption.weight(.semibold))
-                            .frame(width: 210, alignment: .leading)
+                            .frame(width: 220, alignment: .leading)
                     }
                 }
 
                 ForEach(projects, id: \.id) { project in
-                    let tickets = tickets(for: project)
-
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(project.name)
@@ -37,9 +43,9 @@ struct OverallKanbanView: View {
                         }
                         .frame(width: 180, alignment: .leading)
 
-                        ForEach(states) { state in
-                            KanbanCell(tickets: tickets.filter { $0.state == state })
-                                .frame(width: 210, alignment: .leading)
+                        ForEach(priorities, id: \.self) { priority in
+                            TicketKanbanCell(tickets: tickets(for: project, priority: priority))
+                                .frame(width: 220, alignment: .leading)
                         }
                     }
                 }
@@ -50,8 +56,8 @@ struct OverallKanbanView: View {
     }
 }
 
-private struct KanbanCell: View {
-    let tickets: [StubTicket]
+private struct TicketKanbanCell: View {
+    let tickets: [Ticket]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -64,10 +70,15 @@ private struct KanbanCell: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(tickets.prefix(2)) { ticket in
-                    Text(ticket.title)
-                        .font(.caption)
-                        .lineLimit(1)
+                ForEach(tickets.prefix(2), id: \.id) { ticket in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(ticket.displayID)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(ticket.title)
+                            .font(.caption)
+                            .lineLimit(1)
+                    }
                 }
 
                 if tickets.count > 2 {

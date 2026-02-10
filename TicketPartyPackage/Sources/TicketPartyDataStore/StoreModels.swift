@@ -32,26 +32,28 @@ public final class Project {
 }
 
 @Model
-final class Ticket {
-    @Attribute(.unique) var id: UUID
-    @Attribute(.unique) var ticketNumber: Int
-    @Attribute(.unique) var displayID: String
-    var title: String
-    var ticketDescription: String
-    var priority: TicketPriority
-    var severity: TicketSeverity
-    var workflowID: UUID?
-    var stateID: UUID?
-    var assigneeID: UUID?
-    var createdAt: Date
-    var updatedAt: Date
-    var closedAt: Date?
-    var archivedAt: Date?
+public final class Ticket {
+    @Attribute(.unique) public var id: UUID
+    @Attribute(.unique) public var ticketNumber: Int
+    @Attribute(.unique) public var displayID: String
+    public var projectID: UUID?
+    public var title: String
+    public var ticketDescription: String
+    public var priority: TicketPriority
+    public var severity: TicketSeverity
+    public var workflowID: UUID?
+    public var stateID: UUID?
+    public var assigneeID: UUID?
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var closedAt: Date?
+    public var archivedAt: Date?
 
-    init(
+    public init(
         id: UUID = UUID(),
         ticketNumber: Int,
         displayID: String,
+        projectID: UUID? = nil,
         title: String,
         description: String = "",
         priority: TicketPriority = .medium,
@@ -67,6 +69,7 @@ final class Ticket {
         self.id = id
         self.ticketNumber = ticketNumber
         self.displayID = displayID
+        self.projectID = projectID
         self.title = title
         ticketDescription = description
         self.priority = priority
