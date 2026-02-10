@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import TicketPartyModels
 
 public struct TaskSummary: Codable {
     public let id: UUID

@@ -5,14 +5,14 @@ Ship in milestones that preserve local-first operation while preparing for cross
 
 ## Milestone 0: Foundation (Week 1)
 - Create project scaffolding: macOS SwiftUI app + shared domain package + CLI target.
-- Define SwiftData schema for tasks, workflows, comments, notes, assignments, and task events.
+- Define SwiftData schema for tickets, workflows, comments, notes, assignments, and ticket events.
 - Define a shared persistence bootstrap used by app + CLI with an explicit store path:
 - `~/Library/Application Support/TicketParty/TicketParty.store`.
 - Seed one default workflow (`backlog -> ready -> in_progress -> review -> done`).
 - Implement deterministic ticket IDs (`TT-1`, `TT-2`, ...).
 
 ## Milestone 1: MVP Issue Tracking (Weeks 2-3)
-- Task CRUD with workflow-aware state transitions.
+- Ticket CRUD with workflow-aware state transitions.
 - Notes and structured comments.
 - Assignment to named agents.
 - Immutable event history for every significant mutation.
@@ -29,12 +29,12 @@ Ship in milestones that preserve local-first operation while preparing for cross
 ## Milestone 3: "While You Were Away" Digest (Week 5)
 - Session tracking markers (`inactive`, `active`, `digest viewed`).
 - Digest query service and summary UI panel.
-- Highlight unresolved agent questions and newly closed tasks.
+- Highlight unresolved agent questions and newly closed tickets.
 - Add CLI digest command for terminal-based review.
 
 ## Milestone 4: Workflow Customization (Week 6)
 - UI for creating/editing workflow states and transitions.
-- Guard against deleting states referenced by active tasks.
+- Guard against deleting states referenced by active tickets.
 - Migration behavior for workflow edits.
 - Transition history and reporting by workflow.
 
@@ -67,7 +67,7 @@ Sync across user-owned Apple devices (Mac + iPhone) while avoiding a custom clou
 - Store derived presentation fields (like `TT-42`) but compute from stable primitives when possible.
 
 ## Conflict Strategy
-- Canonical history comes from append-only `TaskEvent`.
+- Canonical history comes from append-only `TicketEvent`.
 - For conflicting mutable fields:
 - Use deterministic merge rules by field (for example, last-write-wins for title, explicit conflict note for state if transition invalid).
 - If needed, append system-generated conflict comments for owner review.
@@ -85,7 +85,7 @@ Sync across user-owned Apple devices (Mac + iPhone) while avoiding a custom clou
 - Phase D: ship user-facing sync toggle and sync diagnostics panel.
 
 ## Risks and Mitigations
-- Risk: workflow edits can break task transitions on another device.
+- Risk: workflow edits can break ticket transitions on another device.
 - Mitigation: version workflows and keep compatibility resolver on load.
 - Risk: event log growth affects performance.
 - Mitigation: add indexed queries and precomputed digest snapshots while retaining raw history.
@@ -94,7 +94,7 @@ Sync across user-owned Apple devices (Mac + iPhone) while avoiding a custom clou
 
 ## Initial Backlog Proposal
 - `P0`: model schema + event logging + state engine.
-- `P0`: task list/detail UI + notes/comments.
+- `P0`: ticket list/detail UI + notes/comments.
 - `P0`: `tp` CLI create/list/show/assign/transition.
 - `P1`: digest engine + unanswered questions queue.
 - `P1`: workflow editor.

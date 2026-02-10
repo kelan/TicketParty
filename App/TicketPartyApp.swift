@@ -7,7 +7,7 @@
 
 import SwiftUI
 import SwiftData
-import TicketPartyShared
+import TicketPartyData
 
 @main
 struct TicketPartyApp: App {

@@ -1,4 +1,4 @@
-# TaskTracker CLI Plan
+# TicketParty CLI Plan
 
 ## Goals
 - Provide an agent-first CLI (`tp`) for deterministic automation.
@@ -12,26 +12,26 @@
 - The app UI becomes an XPC client too, instead of writing directly to SwiftData.
 
 ## Target Layout
-- `TaskCore`: validation, workflows/state transitions, shared domain types.
-- `TaskPersistence`: SwiftData models, store bootstrap, repository implementation.
-- `TaskStoreXPCService`: XPC Mach service target; owns `ModelContainer` and all persistence operations.
-- `TaskStoreClient`: shared XPC client wrapper used by app + CLI.
-- `TaskApp`: SwiftUI UI process; calls `TaskStoreClient`.
-- `TaskCLI` (`tp`): command-line target; calls `TaskStoreClient`.
+- `TicketCore`: validation, workflows/state transitions, shared domain types.
+- `TicketPersistence`: SwiftData models, store bootstrap, repository implementation.
+- `TicketStoreXPCService`: XPC Mach service target; owns `ModelContainer` and all persistence operations.
+- `TicketStoreClient`: shared XPC client wrapper used by app + CLI.
+- `TicketApp`: SwiftUI UI process; calls `TicketStoreClient`.
+- `TicketCLI` (`tp`): command-line target; calls `TicketStoreClient`.
 
 ## XPC Contract (MVP)
 - Request style: async request/response methods (no streaming in v1).
 - Response style: Codable DTO payloads, not SwiftData model objects.
 - Core methods:
-- `createTask(input) -> TaskDTO`
-- `listTasks(filter, page) -> TaskListDTO`
-- `getTask(idOrDisplayID) -> TaskDTO`
-- `updateTask(id, patch) -> TaskDTO`
-- `assignTask(id, assignee) -> TaskDTO`
-- `transitionTask(id, toState, reason?) -> TaskDTO`
-- `addNote(taskID, body) -> NoteDTO`
-- `addComment(taskID, type, body, replyTo?) -> CommentDTO`
-- `answerQuestion(taskID, commentID, body) -> CommentDTO`
+- `createTicket(input) -> TicketDTO`
+- `listTickets(filter, page) -> TicketListDTO`
+- `getTicket(idOrDisplayID) -> TicketDTO`
+- `updateTicket(id, patch) -> TicketDTO`
+- `assignTicket(id, assignee) -> TicketDTO`
+- `transitionTicket(id, toState, reason?) -> TicketDTO`
+- `addNote(TicketID, body) -> NoteDTO`
+- `addComment(TicketID, type, body, replyTo?) -> CommentDTO`
+- `answerQuestion(TicketID, commentID, body) -> CommentDTO`
 - `getDigest(window) -> DigestDTO`
 
 ## Persistence Ownership
@@ -41,7 +41,7 @@
 - Load/validate input.
 - Apply domain rules.
 - Persist source change.
-- Persist `TaskEvent` and `TaskStateTransition` when applicable.
+- Persist `TicketEvent` and `TicketStateTransition` when applicable.
 - Save once per request.
 
 ## Lifecycle and Availability
@@ -52,34 +52,34 @@
 - Emit actionable error with exit code.
 
 ## Command Surface (MVP)
-- `tp task create --title --workflow --state --priority`
-- `tp task list --state --assignee --needs-response --json`
-- `tp task show TT-42 --json`
-- `tp task assign TT-42 --agent coder-1`
-- `tp task transition TT-42 --to in_review`
-- `tp note add TT-42 --body`
-- `tp comment add TT-42 --type update --body`
-- `tp question ask TT-42 --body`
-- `tp question answer TT-42 --comment-id C-99 --body`
+- `tp create --title --workflow --state --priority`
+- `tp list --state --assignee --needs-response --json`
+- `tp show TT-42 --json`
+- `tp assign TT-42 --agent coder-1`
+- `tp transition TT-42 --to in_review`
+- `tp add-note TT-42 --body`
+- `tp add-comment TT-42 --type update --body`
+- `tp ask-question TT-42 --body`
+- `tp answer-question TT-42 --comment-id C-99 --body`
 - `tp digest since --last-active --json`
 
 ## Output Contracts
 - Default mode: human-readable concise tables.
 - `--json` mode: stable keys, deterministic ordering, machine-safe output.
-- Include both UUID and display ID in task-oriented responses.
+- Include both UUID and display ID in ticket-oriented responses.
 
 ## Compatibility with `bd`
 - Full command parity is not required in MVP.
 - Low-cost aliases:
-- `tp new` -> `tp task create`
-- `tp list` -> `tp task list`
-- `tp show` -> `tp task show`
+- `tp new` -> `tp create`
+- `tp list` -> `tp list`
+- `tp show` -> `tp show`
 - Prioritize high-quality JSON output over exact CLI parity.
 
 ## Reliability and Safety
 - Centralize optimistic concurrency checks (`updatedAt`) inside service.
-- For writes, emit `TaskEvent` in the same transaction as source mutation.
-- For state changes, emit `TaskStateTransition` plus `TaskEvent` in the same transaction as `Task.currentState` update.
+- For writes, emit `TicketEvent` in the same transaction as source mutation.
+- For state changes, emit `TicketStateTransition` plus `TicketEvent` in the same transaction as `Ticket.currentState` update.
 - Validate required fields and transition rules in one shared service path.
 - Preserve `tp export --format jsonl` as a service-backed command.
 
