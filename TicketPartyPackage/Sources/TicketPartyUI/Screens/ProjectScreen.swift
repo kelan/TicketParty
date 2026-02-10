@@ -232,7 +232,7 @@ private struct ProjectWorkspaceView: View {
             Divider()
 
             ProjectTicketDetailPanel(ticket: selectedTicket)
-                .frame(minWidth: 300, idealWidth: 420)
+                .frame(width: 280)
         }
         .overlay(alignment: .bottomLeading) {
             if isManualSortEnabled == false {
@@ -274,6 +274,7 @@ private struct ProjectFiltersPanel: View {
 }
 
 private struct ProjectTicketDetailPanel: View {
+    @Environment(\.modelContext) private var modelContext
     let ticket: Ticket?
 
     var body: some View {
@@ -282,18 +283,54 @@ private struct ProjectTicketDetailPanel: View {
                 Form {
                     Section("Ticket") {
                         LabeledContent("ID", value: ticket.displayID)
-                        LabeledContent("Title", value: ticket.title)
-                        LabeledContent("Priority", value: ticket.priority.title)
-                        LabeledContent("Severity", value: ticket.severity.title)
                     }
 
-                    Section("Description") {
-                        Text(ticket.ticketDescription.isEmpty ? "No description yet" : ticket.ticketDescription)
+                    Section("Details") {
+                        Picker("Priority", selection: priorityBinding(for: ticket)) {
+                            ForEach(TicketPriority.allCases, id: \.self) { priority in
+                                Text(priority.title).tag(priority)
+                            }
+                        }
+
+                        Picker("Severity", selection: severityBinding(for: ticket)) {
+                            ForEach(TicketSeverity.allCases, id: \.self) { severity in
+                                Text(severity.title).tag(severity)
+                            }
+                        }
                     }
                 }
             } else {
                 ContentUnavailableView("Select a Ticket", systemImage: "doc.text")
             }
+        }
+    }
+
+    private func priorityBinding(for ticket: Ticket) -> Binding<TicketPriority> {
+        Binding(
+            get: { ticket.priority },
+            set: { newPriority in
+                ticket.priority = newPriority
+                persist(ticket: ticket)
+            }
+        )
+    }
+
+    private func severityBinding(for ticket: Ticket) -> Binding<TicketSeverity> {
+        Binding(
+            get: { ticket.severity },
+            set: { newSeverity in
+                ticket.severity = newSeverity
+                persist(ticket: ticket)
+            }
+        )
+    }
+
+    private func persist(ticket: Ticket) {
+        ticket.updatedAt = .now
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
 }
