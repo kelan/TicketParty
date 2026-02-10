@@ -5,6 +5,10 @@ struct OverallKanbanView: View {
     let projects: [Project]
     private let states = StubTicketState.allCases
 
+    private func tickets(for project: Project) -> [StubTicket] {
+        PreviewRuntime.usesStubData ? SampleData.tickets(for: project) : []
+    }
+
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
             VStack(alignment: .leading, spacing: 12) {
@@ -21,7 +25,7 @@ struct OverallKanbanView: View {
                 }
 
                 ForEach(projects, id: \.id) { project in
-                    let tickets = SampleData.tickets(for: project)
+                    let tickets = tickets(for: project)
 
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 3) {

@@ -47,20 +47,23 @@ public struct TicketPartyRootView: View {
                 } header: {
                     HStack {
                         Text("Projects")
+                            .font(.title)
                         Spacer()
                         Button {
                             isPresentingCreateProject = true
                         } label: {
-                            Image(systemName: "plus")
+                            Image(systemName: "plus.circle")
+                                .font(.title2)
+                                .padding(12)
                         }
                         .buttonStyle(.plain)
-                        .help("New Project")
+                        .help("Create new Project")
                     }
                 }
             }
             .navigationTitle("TicketParty")
             #if os(macOS)
-                .navigationSplitViewColumnWidth(min: 230, ideal: 280)
+                .navigationSplitViewColumnWidth(min: 180, ideal: 230)
             #endif
         } detail: {
             switch selection ?? .activity {
@@ -123,5 +126,39 @@ public struct TicketPartyRootView: View {
 
 #Preview {
     TicketPartyRootView()
-        .modelContainer(for: [Project.self], inMemory: true)
+        .modelContainer(previewContainer)
 }
+
+@MainActor private let previewContainer: ModelContainer = {
+    let schema = Schema([Project.self])
+    let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+
+    do {
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        let context = container.mainContext
+
+        let projects: [Project] = [
+            Project(
+                name: "Growth Site",
+                statusText: "Release candidate",
+                summary: "Final QA and launch checklist in progress."
+            ),
+            Project(
+                name: "iOS App",
+                statusText: "Stabilizing",
+                summary: "Crash fixes and polish for the next App Store build."
+            ),
+            Project(
+                name: "Ops Automation",
+                statusText: "Healthy",
+                summary: "Credential rotation and monitoring updates completed."
+            ),
+        ]
+
+        projects.forEach(context.insert)
+        try context.save()
+        return container
+    } catch {
+        fatalError("Failed to create preview container: \(error)")
+    }
+}()

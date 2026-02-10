@@ -60,7 +60,7 @@ struct ProjectDetailView: View {
         }
         .onAppear {
             if selectedTicketID == nil {
-                selectedTicketID = SampleData.tickets(for: project).first?.id
+                selectedTicketID = PreviewRuntime.usesStubData ? SampleData.tickets(for: project).first?.id : nil
             }
         }
     }
@@ -87,7 +87,7 @@ private struct ProjectWorkspaceView: View {
     @Binding var searchText: String
 
     private var tickets: [StubTicket] {
-        SampleData.tickets(for: project)
+        PreviewRuntime.usesStubData ? SampleData.tickets(for: project) : []
     }
 
     private var filteredTickets: [StubTicket] {
