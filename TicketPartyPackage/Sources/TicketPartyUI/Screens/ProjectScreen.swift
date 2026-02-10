@@ -14,30 +14,6 @@ struct ProjectDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text(project.name)
-                    .font(.title2.weight(.semibold))
-
-                Button {
-                    isPresentingEditProject = true
-                } label: {
-                    Image(systemName: "info.circle")
-                }
-                .buttonStyle(.plain)
-                .help("Edit Project")
-
-                Spacer()
-
-                Text(project.sidebarSubtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            Divider()
-
             ProjectWorkspaceView(
                 project: project,
                 selectedTicketID: $selectedTicketID,
@@ -45,6 +21,17 @@ struct ProjectDetailView: View {
                 showHighPriorityOnly: $showHighPriorityOnly,
                 searchText: $searchText
             )
+        }
+        .navigationTitle(project.name)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isPresentingEditProject = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .help("Edit Project")
+            }
         }
         .sheet(isPresented: $isPresentingEditProject) {
             ProjectEditorSheet(
