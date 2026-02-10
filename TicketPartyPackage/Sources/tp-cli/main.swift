@@ -1,5 +1,5 @@
 import Foundation
-import TicketPartyShared
+import TicketPartyModels
 
 private func run(arguments: [String]) throws {
     guard arguments.isEmpty == false else {
@@ -8,31 +8,31 @@ private func run(arguments: [String]) throws {
     }
 
     switch (arguments.first, arguments.dropFirst().first) {
-    case ("task", "list"):
-        let json = arguments.contains("--json")
-        let tasks = try TicketPartyTaskStore.listTasks()
-        if json {
-            try printJSON(tasks)
-        } else if tasks.isEmpty {
-            print("No tasks found.")
-        } else {
-            for task in tasks {
-                print("\(task.displayID)\t\(task.title)\t\(task.priority)")
-            }
-        }
-    case ("task", "create"):
-        let json = arguments.contains("--json")
-        let titleParts = arguments.dropFirst(2).filter { $0 != "--json" }
-        guard titleParts.isEmpty == false else {
-            throw CLIError("Usage: tp task create <title> [--json]")
-        }
-
-        let task = try TicketPartyTaskStore.createTask(title: titleParts.joined(separator: " "))
-        if json {
-            try printJSON(task)
-        } else {
-            print("Created \(task.displayID): \(task.title)")
-        }
+//    case ("ticket", "list"):
+//        let json = arguments.contains("--json")
+//        let tickets = try TicketPartyTicketStore.listTickets()
+//        if json {
+//            try printJSON(tickets)
+//        } else if tickets.isEmpty {
+//            print("No tickets found.")
+//        } else {
+//            for ticket in tickets {
+//                print("\(ticket.displayID)\t\(ticket.title)\t\(ticket.priority)")
+//            }
+//        }
+//    case ("ticket", "create"):
+//        let json = arguments.contains("--json")
+//        let titleParts = arguments.dropFirst(2).filter { $0 != "--json" }
+//        guard titleParts.isEmpty == false else {
+//            throw CLIError("Usage: tp ticket create <title> [--json]")
+//        }
+//
+//        let ticket = try TicketPartyTicketStore.createTicket(title: titleParts.joined(separator: " "))
+//        if json {
+//            try printJSON(ticket)
+//        } else {
+//            print("Created \(ticket.displayID): \(ticket.title)")
+//        }
     default:
         printUsage()
     }
@@ -44,8 +44,8 @@ private func printUsage() {
         tp - TicketParty CLI
 
         Commands:
-          tp task list [--json]
-          tp task create <title> [--json]
+          tp list [--json]
+          tp create <title> [--json]
         """
     )
 }

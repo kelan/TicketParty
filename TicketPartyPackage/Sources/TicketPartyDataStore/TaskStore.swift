@@ -2,7 +2,7 @@ import Foundation
 import SwiftData
 import TicketPartyModels
 
-public struct TaskSummary: Codable {
+public struct TicketSummary: Codable {
     public let id: UUID
     public let displayID: String
     public let title: String
@@ -11,37 +11,37 @@ public struct TaskSummary: Codable {
     public let updatedAt: Date
 }
 
-public enum TicketPartyTaskStore {
-    public static func listTasks() throws -> [TaskSummary] {
+public enum TicketPartyTicketStore {
+    public static func listTickets() throws -> [TicketSummary] {
         let context = try makeContext()
-        let descriptor = FetchDescriptor<Task>(
-            sortBy: [SortDescriptor(\Task.ticketNumber, order: .forward)]
+        let descriptor = FetchDescriptor<Ticket>(
+            sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .forward)]
         )
-        let tasks = try context.fetch(descriptor)
-        return tasks.map(toSummary)
+        let tickets = try context.fetch(descriptor)
+        return tickets.map(toSummary)
     }
 
     @discardableResult
-    public static func createTask(title: String, description: String = "") throws -> TaskSummary {
+    public static func createTicket(title: String, description: String = "") throws -> TicketSummary {
         let context = try makeContext()
 
-        var maxTicketDescriptor = FetchDescriptor<Task>(
-            sortBy: [SortDescriptor(\Task.ticketNumber, order: .reverse)]
+        var maxTicketDescriptor = FetchDescriptor<Ticket>(
+            sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .reverse)]
         )
         maxTicketDescriptor.fetchLimit = 1
         let maxTicketNumber = try context.fetch(maxTicketDescriptor).first?.ticketNumber ?? 0
         let nextTicketNumber = maxTicketNumber + 1
 
-        let task = Task(
+        let ticket = Ticket(
             ticketNumber: nextTicketNumber,
             displayID: "TT-\(nextTicketNumber)",
             title: title,
             description: description
         )
 
-        context.insert(task)
+        context.insert(ticket)
         try context.save()
-        return toSummary(task)
+        return toSummary(ticket)
     }
 
     private static func makeContext() throws -> ModelContext {
@@ -49,14 +49,14 @@ public enum TicketPartyTaskStore {
         return ModelContext(container)
     }
 
-    private static func toSummary(_ task: Task) -> TaskSummary {
-        TaskSummary(
-            id: task.id,
-            displayID: task.displayID,
-            title: task.title,
-            priority: task.priority.rawValue,
-            severity: task.severity.rawValue,
-            updatedAt: task.updatedAt
+    private static func toSummary(_ ticket: Ticket) -> TicketSummary {
+        TicketSummary(
+            id: ticket.id,
+            displayID: ticket.displayID,
+            title: ticket.title,
+            priority: ticket.priority.rawValue,
+            severity: ticket.severity.rawValue,
+            updatedAt: ticket.updatedAt
         )
     }
 }

@@ -115,7 +115,7 @@ private struct ActivityView: View {
 }
 
 private struct OverallKanbanView: View {
-    private let states = StubTaskState.allCases
+    private let states = StubTicketState.allCases
 
     var body: some View {
         ScrollView([.horizontal, .vertical]) {
@@ -144,7 +144,7 @@ private struct OverallKanbanView: View {
                         .frame(width: 180, alignment: .leading)
 
                         ForEach(states) { state in
-                            KanbanCell(tasks: project.tasks.filter { $0.state == state })
+                            KanbanCell(tickets: project.tickets.filter { $0.state == state })
                                 .frame(width: 210, alignment: .leading)
                         }
                     }
@@ -157,27 +157,27 @@ private struct OverallKanbanView: View {
 }
 
 private struct KanbanCell: View {
-    let tasks: [StubTask]
+    let tickets: [StubTicket]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("\(tasks.count) task\(tasks.count == 1 ? "" : "s")")
+            Text("\(tickets.count) ticket\(tickets.count == 1 ? "" : "s")")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
-            if tasks.isEmpty {
+            if tickets.isEmpty {
                 Text("No items")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(tasks.prefix(2)) { task in
-                    Text(task.title)
+                ForEach(tickets.prefix(2)) { ticket in
+                    Text(ticket.title)
                         .font(.caption)
                         .lineLimit(1)
                 }
 
-                if tasks.count > 2 {
-                    Text("+\(tasks.count - 2) more")
+                if tickets.count > 2 {
+                    Text("+\(tickets.count - 2) more")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -190,23 +190,23 @@ private struct KanbanCell: View {
 
 private struct ProjectDetailView: View {
     let project: StubProject
-    @State private var selectedTaskID: String?
-    @State private var selectedStateFilter: StubTaskState?
+    @State private var selectedTicketID: String?
+    @State private var selectedStateFilter: StubTicketState?
     @State private var showHighPriorityOnly = false
     @State private var searchText = ""
 
     var body: some View {
         ProjectWorkspaceView(
             project: project,
-            selectedTaskID: $selectedTaskID,
+            selectedTicketID: $selectedTicketID,
             selectedStateFilter: $selectedStateFilter,
             showHighPriorityOnly: $showHighPriorityOnly,
             searchText: $searchText
         )
         .navigationTitle(project.name)
         .onAppear {
-            if selectedTaskID == nil {
-                selectedTaskID = project.tasks.first?.id
+            if selectedTicketID == nil {
+                selectedTicketID = project.tickets.first?.id
             }
         }
     }
@@ -214,23 +214,23 @@ private struct ProjectDetailView: View {
 
 private struct ProjectWorkspaceView: View {
     let project: StubProject
-    @Binding var selectedTaskID: String?
-    @Binding var selectedStateFilter: StubTaskState?
+    @Binding var selectedTicketID: String?
+    @Binding var selectedStateFilter: StubTicketState?
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
-    private var filteredTasks: [StubTask] {
-        project.tasks.filter { task in
-            let stateMatches = selectedStateFilter == nil || task.state == selectedStateFilter
-            let priorityMatches = showHighPriorityOnly == false || task.priority == .high
-            let searchMatches = searchText.isEmpty || task.title.localizedCaseInsensitiveContains(searchText)
+    private var filteredTickets: [StubTicket] {
+        project.tickets.filter { ticket in
+            let stateMatches = selectedStateFilter == nil || ticket.state == selectedStateFilter
+            let priorityMatches = showHighPriorityOnly == false || ticket.priority == .high
+            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
             return stateMatches && priorityMatches && searchMatches
         }
     }
 
-    private var selectedTask: StubTask? {
-        guard let selectedTaskID else { return nil }
-        return filteredTasks.first { $0.id == selectedTaskID }
+    private var selectedTicket: StubTicket? {
+        guard let selectedTicketID else { return nil }
+        return filteredTickets.first { $0.id == selectedTicketID }
     }
 
     var body: some View {
@@ -244,14 +244,14 @@ private struct ProjectWorkspaceView: View {
 
             Divider()
 
-            List(filteredTasks, selection: $selectedTaskID) { task in
+            List(filteredTickets, selection: $selectedTicketID) { ticket in
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(task.title)
+                    Text(ticket.title)
                         .font(.headline)
                     HStack(spacing: 8) {
-                        Text(task.state.title)
-                        Text(task.priority.title)
-                        Text(task.assignee)
+                        Text(ticket.state.title)
+                        Text(ticket.priority.title)
+                        Text(ticket.assignee)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -262,20 +262,20 @@ private struct ProjectWorkspaceView: View {
 
             Divider()
 
-            ProjectTaskDetailPanel(task: selectedTask)
+            ProjectTicketDetailPanel(ticket: selectedTicket)
                 .frame(minWidth: 300, idealWidth: 380)
         }
-        .onChange(of: filteredTasks.map(\.id)) { _, ids in
-            if let selectedTaskID, ids.contains(selectedTaskID) {
+        .onChange(of: filteredTickets.map(\.id)) { _, ids in
+            if let selectedTicketID, ids.contains(selectedTicketID) {
                 return
             }
-            self.selectedTaskID = ids.first
+            self.selectedTicketID = ids.first
         }
     }
 }
 
 private struct ProjectFiltersPanel: View {
-    @Binding var selectedStateFilter: StubTaskState?
+    @Binding var selectedStateFilter: StubTicketState?
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
@@ -285,8 +285,8 @@ private struct ProjectFiltersPanel: View {
                 .font(.headline)
 
             Picker("State", selection: $selectedStateFilter) {
-                Text("All States").tag(Optional<StubTaskState>.none)
-                ForEach(StubTaskState.allCases) { state in
+                Text("All States").tag(Optional<StubTicketState>.none)
+                ForEach(StubTicketState.allCases) { state in
                     Text(state.title).tag(Optional(state))
                 }
             }
@@ -294,7 +294,7 @@ private struct ProjectFiltersPanel: View {
 
             Toggle("High Priority Only", isOn: $showHighPriorityOnly)
 
-            TextField("Search tasks", text: $searchText)
+            TextField("Search tickets", text: $searchText)
 
             Spacer()
         }
@@ -302,26 +302,26 @@ private struct ProjectFiltersPanel: View {
     }
 }
 
-private struct ProjectTaskDetailPanel: View {
-    let task: StubTask?
+private struct ProjectTicketDetailPanel: View {
+    let ticket: StubTicket?
 
     var body: some View {
         Group {
-            if let task {
+            if let ticket {
                 Form {
-                    Section("Task") {
-                        LabeledContent("Title", value: task.title)
-                        LabeledContent("State", value: task.state.title)
-                        LabeledContent("Priority", value: task.priority.title)
-                        LabeledContent("Assignee", value: task.assignee)
+                    Section("Ticket") {
+                        LabeledContent("Title", value: ticket.title)
+                        LabeledContent("State", value: ticket.state.title)
+                        LabeledContent("Priority", value: ticket.priority.title)
+                        LabeledContent("Assignee", value: ticket.assignee)
                     }
 
                     Section("Latest Update") {
-                        Text(task.latestNote)
+                        Text(ticket.latestNote)
                     }
                 }
             } else {
-                ContentUnavailableView("Select a Task", systemImage: "doc.text")
+                ContentUnavailableView("Select a Ticket", systemImage: "doc.text")
             }
         }
     }
@@ -331,7 +331,7 @@ private struct ProjectTaskDetailPanel: View {
     TicketPartyRootView()
 }
 
-private enum StubTaskState: String, CaseIterable, Identifiable {
+private enum StubTicketState: String, CaseIterable, Identifiable {
     case backlog
     case inProgress
     case blocked
@@ -364,10 +364,10 @@ private enum StubPriority: String {
     var title: String { rawValue.capitalized }
 }
 
-private struct StubTask: Identifiable, Hashable {
+private struct StubTicket: Identifiable, Hashable {
     let id: String
     let title: String
-    let state: StubTaskState
+    let state: StubTicketState
     let priority: StubPriority
     let assignee: String
     let latestNote: String
@@ -377,7 +377,7 @@ private struct StubProject: Identifiable, Hashable {
     let id: String
     let name: String
     let latestStatus: String
-    let tasks: [StubTask]
+    let tickets: [StubTicket]
 }
 
 private struct StubActivityEvent: Identifiable, Hashable {
@@ -393,8 +393,8 @@ private enum StubData {
             id: "project_growth",
             name: "Growth Site",
             latestStatus: "In Progress - waiting on analytics backfill",
-            tasks: [
-                StubTask(
+            tickets: [
+                StubTicket(
                     id: "growth_1",
                     title: "Plan release checklist",
                     state: .review,
@@ -402,7 +402,7 @@ private enum StubData {
                     assignee: "Kelan",
                     latestNote: "Checklist drafted and in stakeholder review."
                 ),
-                StubTask(
+                StubTicket(
                     id: "growth_2",
                     title: "Revise pricing page copy",
                     state: .inProgress,
@@ -410,7 +410,7 @@ private enum StubData {
                     assignee: "Avery",
                     latestNote: "Legal language updates still pending."
                 ),
-                StubTask(
+                StubTicket(
                     id: "growth_3",
                     title: "Fix attribution mismatch",
                     state: .blocked,
@@ -418,7 +418,7 @@ private enum StubData {
                     assignee: "Maya",
                     latestNote: "Blocked by delayed warehouse replay job."
                 ),
-                StubTask(
+                StubTicket(
                     id: "growth_4",
                     title: "New referral CTA",
                     state: .backlog,
@@ -432,8 +432,8 @@ private enum StubData {
             id: "project_ios",
             name: "iOS App",
             latestStatus: "Review queue growing",
-            tasks: [
-                StubTask(
+            tickets: [
+                StubTicket(
                     id: "ios_1",
                     title: "Refactor onboarding flow",
                     state: .inProgress,
@@ -441,7 +441,7 @@ private enum StubData {
                     assignee: "Noah",
                     latestNote: "Feature flag enabled for internal builds."
                 ),
-                StubTask(
+                StubTicket(
                     id: "ios_2",
                     title: "Fix settings crash",
                     state: .done,
@@ -449,7 +449,7 @@ private enum StubData {
                     assignee: "Sam",
                     latestNote: "Patched in build 42 and verified."
                 ),
-                StubTask(
+                StubTicket(
                     id: "ios_3",
                     title: "Polish push opt-in copy",
                     state: .review,
@@ -463,8 +463,8 @@ private enum StubData {
             id: "project_ops",
             name: "Ops Automation",
             latestStatus: "Stable this week",
-            tasks: [
-                StubTask(
+            tickets: [
+                StubTicket(
                     id: "ops_1",
                     title: "Consolidate CI templates",
                     state: .review,
@@ -472,7 +472,7 @@ private enum StubData {
                     assignee: "Jordan",
                     latestNote: "Cross-team migration playbook is ready."
                 ),
-                StubTask(
+                StubTicket(
                     id: "ops_2",
                     title: "Rotate stale credentials",
                     state: .done,
@@ -480,7 +480,7 @@ private enum StubData {
                     assignee: "Casey",
                     latestNote: "Rotation complete in all production environments."
                 ),
-                StubTask(
+                StubTicket(
                     id: "ops_3",
                     title: "Audit deployment alerts",
                     state: .backlog,
