@@ -51,14 +51,22 @@ This is not single-person TODO app.
 
 ## CLI Requirements
 - First-class command line interface for agents, designed as a practical `bd` alternative.
+- Binary name: `tp`.
 - Core commands:
-- `tt task create`, `tt task list`, `tt task show`, `tt task assign`, `tt task move-state`.
-- `tt note add`, `tt comment add`, `tt question ask`, `tt question answer`.
-- `tt digest since --last-active`.
+- `tp task create`, `tp task list`, `tp task show`, `tp task assign`, `tp task move-state`.
+- `tp note add`, `tp comment add`, `tp question ask`, `tp question answer`.
+- `tp digest since --last-active`.
 - Output modes:
 - Human-readable tables.
 - JSON mode for programmatic agents.
 - Favor stable IDs and deterministic output for automation.
+- CLI and app must use one shared persistence bootstrap and one shared SwiftData store path.
+- Planned store path: `~/Library/Application Support/TicketParty/TicketParty.store`.
+- CLI implementation pattern should be deterministic per command:
+- Open shared container.
+- Create `ModelContext`.
+- Execute operation.
+- Save on write commands.
 
 ## Non-Goals (Initial)
 - No multi-user remote collaboration service.

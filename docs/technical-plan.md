@@ -10,7 +10,7 @@
 - `TaskCore`: domain models and validation rules.
 - `TaskPersistence`: SwiftData models, migrations, query utilities.
 - `TaskApp`: SwiftUI screens and view models.
-- `TaskCLI`: executable target that reuses `TaskCore` + `TaskPersistence`.
+- `TaskCLI`: executable target (`tp`) that reuses `TaskCore` + `TaskPersistence`.
 - `TaskDigest`: summary/query engine for "while you were away."
 
 ## SwiftData Domain Model (MVP+)
@@ -73,27 +73,37 @@
 - Expose digest as shared service used by app and CLI.
 
 ## CLI Design
-- Binary name: `tt`.
+- Binary name: `tp`.
 - Build via Swift Package executable target or Xcode command line target.
+- Parse commands using `swift-argument-parser`.
 - Read/write same SwiftData store location as app.
+- Define one shared persistence bootstrap in `TaskPersistence` used by both app and CLI.
+- Use an explicit store path so both targets are guaranteed to hit the same file:
+- `~/Library/Application Support/TicketParty/TicketParty.store`.
+- Keep CloudKit disabled for CLI/local-first mode unless sync mode is explicitly enabled.
+- Subcommand execution pattern:
+- Create/open shared `ModelContainer`.
+- Create `ModelContext` for the command.
+- Run fetch/insert/update/delete operations.
+- Call `save()` for all write paths.
 - Key commands:
-- `tt task create --title --workflow --state --priority`
-- `tt task list --state --assignee --needs-response --json`
-- `tt task show TT-42 --json`
-- `tt task assign TT-42 --agent coder-1`
-- `tt task transition TT-42 --to in_review`
-- `tt note add TT-42 --body`
-- `tt comment add TT-42 --type update --body`
-- `tt question ask TT-42 --body`
-- `tt question answer TT-42 --comment-id C-99 --body`
-- `tt digest since --last-active --json`
+- `tp task create --title --workflow --state --priority`
+- `tp task list --state --assignee --needs-response --json`
+- `tp task show TT-42 --json`
+- `tp task assign TT-42 --agent coder-1`
+- `tp task transition TT-42 --to in_review`
+- `tp note add TT-42 --body`
+- `tp comment add TT-42 --type update --body`
+- `tp question ask TT-42 --body`
+- `tp question answer TT-42 --comment-id C-99 --body`
+- `tp digest since --last-active --json`
 
 ## Compatibility with `bd`
 - Do not require full command compatibility initially.
 - Add aliases for common flows where low-cost:
-- `tt new` -> `tt task create`
-- `tt list` -> `tt task list`
-- `tt show` -> `tt task show`
+- `tp new` -> `tp task create`
+- `tp list` -> `tp task list`
+- `tp show` -> `tp task show`
 - Prioritize good JSON output over exact command parity.
 
 ## Reliability and Safety
@@ -101,7 +111,7 @@
 - Emit `TaskEvent` within same transaction as source update.
 - Validate required fields and transition rules in one shared service.
 - Build minimal backup/export feature early:
-- `tt export --format jsonl`.
+- `tp export --format jsonl`.
 
 ## Testing Strategy
 - Domain tests for transition validation and comment/question rules.

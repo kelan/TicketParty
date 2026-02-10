@@ -6,6 +6,8 @@ Ship in milestones that preserve local-first operation while preparing for cross
 ## Milestone 0: Foundation (Week 1)
 - Create project scaffolding: macOS SwiftUI app + shared domain package + CLI target.
 - Define SwiftData schema for tasks, workflows, comments, notes, assignments, and task events.
+- Define a shared persistence bootstrap used by app + CLI with an explicit store path:
+- `~/Library/Application Support/TicketParty/TicketParty.store`.
 - Seed one default workflow (`backlog -> ready -> in_progress -> review -> done`).
 - Implement deterministic ticket IDs (`TT-1`, `TT-2`, ...).
 
@@ -17,9 +19,11 @@ Ship in milestones that preserve local-first operation while preparing for cross
 - Basic list/detail UI optimized for issue triage.
 
 ## Milestone 2: Agent-First CLI (Weeks 3-4)
-- Implement `tt` commands for create/list/show/assign/transition/comments/questions.
+- Implement `tp` commands for create/list/show/assign/transition/comments/questions.
 - Add `--json` output to all read commands.
 - Ensure CLI and app share validation logic and store.
+- Build CLI with `swift-argument-parser`.
+- Standardize subcommand flow: open shared container, create `ModelContext`, perform operation, save on writes.
 - Add scripting docs for agent usage patterns.
 
 ## Milestone 3: "While You Were Away" Digest (Week 5)
@@ -91,7 +95,7 @@ Sync across user-owned Apple devices (Mac + iPhone) while avoiding a custom clou
 ## Initial Backlog Proposal
 - `P0`: model schema + event logging + state engine.
 - `P0`: task list/detail UI + notes/comments.
-- `P0`: `tt` CLI create/list/show/assign/transition.
+- `P0`: `tp` CLI create/list/show/assign/transition.
 - `P1`: digest engine + unanswered questions queue.
 - `P1`: workflow editor.
 - `P2`: CloudKit sync flag and device sync test harness.
