@@ -5,10 +5,16 @@
 //  Created by Kelan Champagne on 2/9/26.
 //
 
+import SwiftData
 import SwiftUI
+import TicketPartyDataStore
 
 public struct TicketPartyRootView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Query(sort: [SortDescriptor(\Project.updatedAt, order: .reverse), SortDescriptor(\Project.name, order: .forward)]) private var projects: [Project]
+
     @State private var selection: SidebarSelection? = .activity
+    @State private var isPresentingCreateProject = false
 
     public init() {}
 
@@ -25,18 +31,30 @@ public struct TicketPartyRootView: View {
                     }
                 }
 
-                Section("Projects") {
-                    ForEach(StubData.projects) { project in
+                Section {
+                    ForEach(projects, id: \.id) { project in
                         NavigationLink(value: SidebarSelection.project(project.id)) {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(project.name)
                                     .font(.headline)
-                                Text(project.latestStatus)
+                                Text(project.sidebarSubtitle)
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 2)
                         }
+                    }
+                } header: {
+                    HStack {
+                        Text("Projects")
+                        Spacer()
+                        Button {
+                            isPresentingCreateProject = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.plain)
+                        .help("New Project")
                     }
                 }
             }
@@ -50,16 +68,55 @@ public struct TicketPartyRootView: View {
                 ActivityView()
 
             case .allProjects:
-                OverallKanbanView()
+                OverallKanbanView(projects: projects)
 
             case let .project(projectID):
-                if let project = StubData.project(id: projectID) {
+                if let project = projects.first(where: { $0.id == projectID }) {
                     ProjectDetailView(project: project)
                         .id(project.id)
                 } else {
                     ContentUnavailableView("Project Not Found", systemImage: "questionmark.folder")
                 }
             }
+        }
+        .sheet(isPresented: $isPresentingCreateProject) {
+            ProjectEditorSheet(
+                title: "New Project",
+                submitLabel: "Create",
+                initialDraft: ProjectDraft(),
+                onSubmit: createProject
+            )
+        }
+        .onChange(of: projects.map(\.id)) { _, projectIDs in
+            guard let selection else {
+                self.selection = .activity
+                return
+            }
+
+            if case let .project(projectID) = selection,
+               projectIDs.contains(projectID) == false
+            {
+                self.selection = .activity
+            }
+        }
+    }
+
+    private func createProject(_ draft: ProjectDraft) {
+        let project = Project(
+            name: draft.name,
+            statusText: draft.statusText,
+            summary: draft.summary,
+            createdAt: .now,
+            updatedAt: .now
+        )
+
+        modelContext.insert(project)
+
+        do {
+            try modelContext.save()
+            selection = .project(project.id)
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
 }
@@ -92,12 +149,40 @@ public struct TicketPartySettingsView: View {
 private enum SidebarSelection: Hashable {
     case activity
     case allProjects
-    case project(String)
+    case project(UUID)
+}
+
+private struct ProjectDraft: Equatable {
+    var name: String = ""
+    var statusText: String = ""
+    var summary: String = ""
+
+    var normalized: ProjectDraft {
+        ProjectDraft(
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            statusText: statusText.trimmingCharacters(in: .whitespacesAndNewlines),
+            summary: summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+    }
+}
+
+private extension Project {
+    var sidebarSubtitle: String {
+        if statusText.isEmpty == false {
+            return statusText
+        }
+
+        if summary.isEmpty == false {
+            return summary
+        }
+
+        return "No status yet"
+    }
 }
 
 private struct ActivityView: View {
     var body: some View {
-        List(StubData.activityEvents) { event in
+        List(SampleData.activityEvents) { event in
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.title)
                     .font(.headline)
@@ -115,6 +200,7 @@ private struct ActivityView: View {
 }
 
 private struct OverallKanbanView: View {
+    let projects: [Project]
     private let states = StubTicketState.allCases
 
     var body: some View {
@@ -132,19 +218,21 @@ private struct OverallKanbanView: View {
                     }
                 }
 
-                ForEach(StubData.projects) { project in
+                ForEach(projects, id: \.id) { project in
+                    let tickets = SampleData.tickets(for: project)
+
                     HStack(alignment: .top, spacing: 10) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(project.name)
                                 .font(.headline)
-                            Text(project.latestStatus)
+                            Text(project.sidebarSubtitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .frame(width: 180, alignment: .leading)
 
                         ForEach(states) { state in
-                            KanbanCell(tickets: project.tickets.filter { $0.state == state })
+                            KanbanCell(tickets: tickets.filter { $0.state == state })
                                 .frame(width: 210, alignment: .leading)
                         }
                     }
@@ -189,38 +277,95 @@ private struct KanbanCell: View {
 }
 
 private struct ProjectDetailView: View {
-    let project: StubProject
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var project: Project
+
     @State private var selectedTicketID: String?
     @State private var selectedStateFilter: StubTicketState?
     @State private var showHighPriorityOnly = false
     @State private var searchText = ""
+    @State private var isPresentingEditProject = false
 
     var body: some View {
-        ProjectWorkspaceView(
-            project: project,
-            selectedTicketID: $selectedTicketID,
-            selectedStateFilter: $selectedStateFilter,
-            showHighPriorityOnly: $showHighPriorityOnly,
-            searchText: $searchText
-        )
-        .navigationTitle(project.name)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(project.name)
+                    .font(.title2.weight(.semibold))
+
+                Button {
+                    isPresentingEditProject = true
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.plain)
+                .help("Edit Project")
+
+                Spacer()
+
+                Text(project.sidebarSubtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            ProjectWorkspaceView(
+                project: project,
+                selectedTicketID: $selectedTicketID,
+                selectedStateFilter: $selectedStateFilter,
+                showHighPriorityOnly: $showHighPriorityOnly,
+                searchText: $searchText
+            )
+        }
+        .sheet(isPresented: $isPresentingEditProject) {
+            ProjectEditorSheet(
+                title: "Edit Project",
+                submitLabel: "Save",
+                initialDraft: ProjectDraft(
+                    name: project.name,
+                    statusText: project.statusText,
+                    summary: project.summary
+                ),
+                onSubmit: applyProjectEdits
+            )
+        }
         .onAppear {
             if selectedTicketID == nil {
-                selectedTicketID = project.tickets.first?.id
+                selectedTicketID = SampleData.tickets(for: project).first?.id
             }
+        }
+    }
+
+    private func applyProjectEdits(_ draft: ProjectDraft) {
+        project.name = draft.name
+        project.statusText = draft.statusText
+        project.summary = draft.summary
+        project.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
 }
 
 private struct ProjectWorkspaceView: View {
-    let project: StubProject
+    let project: Project
     @Binding var selectedTicketID: String?
     @Binding var selectedStateFilter: StubTicketState?
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
+    private var tickets: [StubTicket] {
+        SampleData.tickets(for: project)
+    }
+
     private var filteredTickets: [StubTicket] {
-        project.tickets.filter { ticket in
+        tickets.filter { ticket in
             let stateMatches = selectedStateFilter == nil || ticket.state == selectedStateFilter
             let priorityMatches = showHighPriorityOnly == false || ticket.priority == .high
             let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
@@ -327,8 +472,63 @@ private struct ProjectTicketDetailPanel: View {
     }
 }
 
+private struct ProjectEditorSheet: View {
+    let title: String
+    let submitLabel: String
+    let onSubmit: (ProjectDraft) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draft: ProjectDraft
+
+    init(
+        title: String,
+        submitLabel: String,
+        initialDraft: ProjectDraft,
+        onSubmit: @escaping (ProjectDraft) -> Void
+    ) {
+        self.title = title
+        self.submitLabel = submitLabel
+        self.onSubmit = onSubmit
+        _draft = State(initialValue: initialDraft)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Basics") {
+                    TextField("Title", text: $draft.name)
+                    TextField("Current Status", text: $draft.statusText)
+                }
+
+                Section("Details") {
+                    TextField("Summary", text: $draft.summary, axis: .vertical)
+                        .lineLimit(3 ... 6)
+                }
+            }
+            .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(submitLabel) {
+                        onSubmit(draft.normalized)
+                        dismiss()
+                    }
+                    .disabled(draft.normalized.name.isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 520, minHeight: 320)
+    }
+}
+
 #Preview {
     TicketPartyRootView()
+        .modelContainer(for: [Project.self], inMemory: true)
 }
 
 private enum StubTicketState: String, CaseIterable, Identifiable {
@@ -377,13 +577,6 @@ private struct StubTicket: Identifiable, Hashable {
     let latestNote: String
 }
 
-private struct StubProject: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let latestStatus: String
-    let tickets: [StubTicket]
-}
-
 private struct StubActivityEvent: Identifiable, Hashable {
     let id: String
     let title: String
@@ -391,111 +584,7 @@ private struct StubActivityEvent: Identifiable, Hashable {
     let timestamp: String
 }
 
-private enum StubData {
-    static let projects: [StubProject] = [
-        StubProject(
-            id: "project_growth",
-            name: "Growth Site",
-            latestStatus: "In Progress - waiting on analytics backfill",
-            tickets: [
-                StubTicket(
-                    id: "growth_1",
-                    title: "Plan release checklist",
-                    state: .review,
-                    priority: .high,
-                    assignee: "Kelan",
-                    latestNote: "Checklist drafted and in stakeholder review."
-                ),
-                StubTicket(
-                    id: "growth_2",
-                    title: "Revise pricing page copy",
-                    state: .inProgress,
-                    priority: .medium,
-                    assignee: "Avery",
-                    latestNote: "Legal language updates still pending."
-                ),
-                StubTicket(
-                    id: "growth_3",
-                    title: "Fix attribution mismatch",
-                    state: .blocked,
-                    priority: .high,
-                    assignee: "Maya",
-                    latestNote: "Blocked by delayed warehouse replay job."
-                ),
-                StubTicket(
-                    id: "growth_4",
-                    title: "New referral CTA",
-                    state: .backlog,
-                    priority: .low,
-                    assignee: "Riley",
-                    latestNote: "Pending design exploration."
-                ),
-            ]
-        ),
-        StubProject(
-            id: "project_ios",
-            name: "iOS App",
-            latestStatus: "Review queue growing",
-            tickets: [
-                StubTicket(
-                    id: "ios_1",
-                    title: "Refactor onboarding flow",
-                    state: .inProgress,
-                    priority: .high,
-                    assignee: "Noah",
-                    latestNote: "Feature flag enabled for internal builds."
-                ),
-                StubTicket(
-                    id: "ios_2",
-                    title: "Fix settings crash",
-                    state: .done,
-                    priority: .high,
-                    assignee: "Sam",
-                    latestNote: "Patched in build 42 and verified."
-                ),
-                StubTicket(
-                    id: "ios_3",
-                    title: "Polish push opt-in copy",
-                    state: .review,
-                    priority: .medium,
-                    assignee: "Taylor",
-                    latestNote: "Awaiting PM approval."
-                ),
-            ]
-        ),
-        StubProject(
-            id: "project_ops",
-            name: "Ops Automation",
-            latestStatus: "Stable this week",
-            tickets: [
-                StubTicket(
-                    id: "ops_1",
-                    title: "Consolidate CI templates",
-                    state: .review,
-                    priority: .medium,
-                    assignee: "Jordan",
-                    latestNote: "Cross-team migration playbook is ready."
-                ),
-                StubTicket(
-                    id: "ops_2",
-                    title: "Rotate stale credentials",
-                    state: .done,
-                    priority: .high,
-                    assignee: "Casey",
-                    latestNote: "Rotation complete in all production environments."
-                ),
-                StubTicket(
-                    id: "ops_3",
-                    title: "Audit deployment alerts",
-                    state: .backlog,
-                    priority: .low,
-                    assignee: "Morgan",
-                    latestNote: "Initial audit scope drafted."
-                ),
-            ]
-        ),
-    ]
-
+private enum SampleData {
     static let activityEvents: [StubActivityEvent] = [
         StubActivityEvent(
             id: "activity_1",
@@ -517,7 +606,51 @@ private enum StubData {
         ),
     ]
 
-    static func project(id: String) -> StubProject? {
-        projects.first { $0.id == id }
+    static func tickets(for project: Project) -> [StubTicket] {
+        let baseTickets: [StubTicket] = [
+            StubTicket(
+                id: "1",
+                title: "Plan release checklist",
+                state: .review,
+                priority: .high,
+                assignee: "Kelan",
+                latestNote: "Checklist drafted and in stakeholder review."
+            ),
+            StubTicket(
+                id: "2",
+                title: "Revise pricing page copy",
+                state: .inProgress,
+                priority: .medium,
+                assignee: "Avery",
+                latestNote: "Legal language updates still pending."
+            ),
+            StubTicket(
+                id: "3",
+                title: "Fix attribution mismatch",
+                state: .blocked,
+                priority: .high,
+                assignee: "Maya",
+                latestNote: "Blocked by delayed warehouse replay job."
+            ),
+            StubTicket(
+                id: "4",
+                title: "New referral CTA",
+                state: .backlog,
+                priority: .low,
+                assignee: "Riley",
+                latestNote: "Pending design exploration."
+            ),
+        ]
+
+        return baseTickets.map { ticket in
+            StubTicket(
+                id: "\(project.id.uuidString)_\(ticket.id)",
+                title: ticket.title,
+                state: ticket.state,
+                priority: ticket.priority,
+                assignee: ticket.assignee,
+                latestNote: ticket.latestNote
+            )
+        }
     }
 }

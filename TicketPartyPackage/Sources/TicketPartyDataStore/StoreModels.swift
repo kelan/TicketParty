@@ -3,6 +3,35 @@ import SwiftData
 import TicketPartyModels
 
 @Model
+public final class Project {
+    @Attribute(.unique) public var id: UUID
+    public var name: String
+    public var statusText: String
+    public var summary: String
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var archivedAt: Date?
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        statusText: String = "",
+        summary: String = "",
+        createdAt: Date = .now,
+        updatedAt: Date = .now,
+        archivedAt: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.statusText = statusText
+        self.summary = summary
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.archivedAt = archivedAt
+    }
+}
+
+@Model
 final class Ticket {
     @Attribute(.unique) var id: UUID
     @Attribute(.unique) var ticketNumber: Int

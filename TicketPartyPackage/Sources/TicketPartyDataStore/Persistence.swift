@@ -4,6 +4,7 @@ import SwiftData
 public enum TicketPartyPersistence {
     public static func makeSharedContainer() throws -> ModelContainer {
         let schema = Schema([
+            Project.self,
             Ticket.self,
             Note.self,
             Comment.self,
