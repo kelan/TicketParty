@@ -36,7 +36,7 @@ let package = Package(
             ]
         ),
         .target(
-            name: "TicketPartyModels",
+            name: "TicketPartyModels"
         ),
         .target(
             name: "TicketPartyDataStore",

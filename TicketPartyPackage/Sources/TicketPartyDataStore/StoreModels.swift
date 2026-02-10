@@ -39,7 +39,7 @@ final class Ticket {
         self.ticketNumber = ticketNumber
         self.displayID = displayID
         self.title = title
-        self.ticketDescription = description
+        ticketDescription = description
         self.priority = priority
         self.severity = severity
         self.workflowID = workflowID

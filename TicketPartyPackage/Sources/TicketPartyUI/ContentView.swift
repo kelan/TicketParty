@@ -41,9 +41,9 @@ public struct TicketPartyRootView: View {
                 }
             }
             .navigationTitle("TicketParty")
-#if os(macOS)
-            .navigationSplitViewColumnWidth(min: 230, ideal: 280)
-#endif
+            #if os(macOS)
+                .navigationSplitViewColumnWidth(min: 230, ideal: 280)
+            #endif
         } detail: {
             switch selection ?? .activity {
             case .activity:
@@ -285,7 +285,7 @@ private struct ProjectFiltersPanel: View {
                 .font(.headline)
 
             Picker("State", selection: $selectedStateFilter) {
-                Text("All States").tag(Optional<StubTicketState>.none)
+                Text("All States").tag(StubTicketState?.none)
                 ForEach(StubTicketState.allCases) { state in
                     Text(state.title).tag(Optional(state))
                 }
@@ -338,7 +338,9 @@ private enum StubTicketState: String, CaseIterable, Identifiable {
     case review
     case done
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     var title: String {
         switch self {
@@ -361,7 +363,9 @@ private enum StubPriority: String {
     case medium
     case high
 
-    var title: String { rawValue.capitalized }
+    var title: String {
+        rawValue.capitalized
+    }
 }
 
 private struct StubTicket: Identifiable, Hashable {

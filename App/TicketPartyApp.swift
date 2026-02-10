@@ -5,8 +5,8 @@
 //  Created by Kelan Champagne on 2/9/26.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 import TicketPartyDataStore
 import TicketPartyUI
 
@@ -26,11 +26,11 @@ struct TicketPartyApp: App {
         }
         .modelContainer(sharedModelContainer)
 
-#if os(macOS)
-        Settings {
-            TicketPartySettingsView()
-        }
-        .modelContainer(sharedModelContainer)
-#endif
+        #if os(macOS)
+            Settings {
+                TicketPartySettingsView()
+            }
+            .modelContainer(sharedModelContainer)
+        #endif
     }
 }
