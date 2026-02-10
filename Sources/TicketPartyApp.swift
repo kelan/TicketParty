@@ -7,26 +7,13 @@
 
 import SwiftUI
 import SwiftData
+import TicketPartyShared
 
 @main
 struct TicketPartyApp: App {
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Task.self,
-            Note.self,
-            Comment.self,
-            Workflow.self,
-            WorkflowState.self,
-            WorkflowTransition.self,
-            Assignment.self,
-            Agent.self,
-            TaskEvent.self,
-            SessionMarker.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try TicketPartyPersistence.makeSharedContainer()
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
@@ -34,7 +21,7 @@ struct TicketPartyApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TicketPartyRootView()
         }
         .modelContainer(sharedModelContainer)
     }

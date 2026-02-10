@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		764105512F3C00010008EB12 /* TicketPartyShared in Frameworks */ = {isa = PBXBuildFile; productRef = 764105532F3C00010008EB12 /* TicketPartyShared */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7641050D2F3B17B10008EB12 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,6 +33,7 @@
 		764105162F3B17B10008EB12 /* TicketPartyUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TicketPartyUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7641053A2F3B90520008EB12 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = AGENTS.md; sourceTree = "<group>"; };
 		764105432F3B90520008EB12 /* Justfile */ = {isa = PBXFileReference; lastKnownFileType = text; path = Justfile; sourceTree = "<group>"; };
+		764105502F3C00010008EB12 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = text.script.swift; path = Package.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -87,6 +92,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				764105512F3C00010008EB12 /* TicketPartyShared in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +117,7 @@
 			isa = PBXGroup;
 			children = (
 				7641053A2F3B90520008EB12 /* AGENTS.md */,
+				764105502F3C00010008EB12 /* Package.swift */,
 				764105422F3B90520008EB12 /* docs */,
 				764105432F3B90520008EB12 /* Justfile */,
 				7641053E2F3B90520008EB12 /* config */,
@@ -154,6 +161,7 @@
 			);
 			name = TicketParty;
 			packageProductDependencies = (
+				764105532F3C00010008EB12 /* TicketPartyShared */,
 			);
 			productName = TicketParty;
 			productReference = 764104FB2F3B17AF0008EB12 /* TicketParty.app */;
@@ -237,6 +245,9 @@
 			);
 			mainGroup = 764104F22F3B17AF0008EB12;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				764105522F3C00010008EB12 /* XCLocalSwiftPackageReference "." */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 764104FC2F3B17AF0008EB12 /* Products */;
 			projectDirPath = "";
@@ -515,6 +526,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		764105522F3C00010008EB12 /* XCLocalSwiftPackageReference "." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ".";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		764105532F3C00010008EB12 /* TicketPartyShared */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 764105522F3C00010008EB12 /* XCLocalSwiftPackageReference "." */;
+			productName = TicketPartyShared;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 764104F32F3B17AF0008EB12 /* Project object */;
 }
