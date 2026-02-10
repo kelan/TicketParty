@@ -1,4 +1,4 @@
-# CommandTap tasks
+# TicketParty tasks
 
 set shell := ["/bin/zsh", "-cu"]
 

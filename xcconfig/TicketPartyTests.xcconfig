@@ -1,0 +1,11 @@
+//
+// TicketPartyTests.xcconfig
+//
+
+#include "common.xcconfig"
+
+BUNDLE_LOADER = $(TEST_HOST)
+PRODUCT_BUNDLE_IDENTIFIER = io.kelan.TicketPartyTests
+STRING_CATALOG_GENERATE_SYMBOLS = NO
+SWIFT_EMIT_LOC_STRINGS = NO
+TEST_HOST = $(BUILT_PRODUCTS_DIR)/TicketParty.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/TicketParty
