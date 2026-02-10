@@ -6,6 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		764106262F3BC9A10008EB12 /* TicketPartyDataStore in Frameworks */ = {isa = PBXBuildFile; productRef = 764106252F3BC9A10008EB12 /* TicketPartyDataStore */; };
+		764106282F3BC9A10008EB12 /* TicketPartyModels in Frameworks */ = {isa = PBXBuildFile; productRef = 764106272F3BC9A10008EB12 /* TicketPartyModels */; };
+		7641062A2F3BC9A10008EB12 /* TicketPartyUI in Frameworks */ = {isa = PBXBuildFile; productRef = 764106292F3BC9A10008EB12 /* TicketPartyUI */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		7641050D2F3B17B10008EB12 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -83,6 +89,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				764106262F3BC9A10008EB12 /* TicketPartyDataStore in Frameworks */,
+				7641062A2F3BC9A10008EB12 /* TicketPartyUI in Frameworks */,
+				764106282F3BC9A10008EB12 /* TicketPartyModels in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -114,6 +123,7 @@
 				7641060C2F3BC4D20008EB12 /* TicketPartyPackage */,
 				764105192F3B17B10008EB12 /* UITests */,
 				7641054F2F3B918A0008EB12 /* xcconfig */,
+				764106242F3BC9A10008EB12 /* Frameworks */,
 				764104FC2F3B17AF0008EB12 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -126,6 +136,13 @@
 				764105162F3B17B10008EB12 /* TicketPartyUITests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		764106242F3BC9A10008EB12 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -146,6 +163,9 @@
 			);
 			name = TicketParty;
 			packageProductDependencies = (
+				764106252F3BC9A10008EB12 /* TicketPartyDataStore */,
+				764106272F3BC9A10008EB12 /* TicketPartyModels */,
+				764106292F3BC9A10008EB12 /* TicketPartyUI */,
 			);
 			productName = TicketParty;
 			productReference = 764104FB2F3B17AF0008EB12 /* TicketParty.app */;
@@ -523,6 +543,21 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		764106092F3BC1BC0008EB12 /* TicketPartyUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 764106082F3BC1B10008EB12 /* XCLocalSwiftPackageReference "TicketPartyPackage" */;
+			productName = TicketPartyUI;
+		};
+		764106252F3BC9A10008EB12 /* TicketPartyDataStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 764106082F3BC1B10008EB12 /* XCLocalSwiftPackageReference "TicketPartyPackage" */;
+			productName = TicketPartyDataStore;
+		};
+		764106272F3BC9A10008EB12 /* TicketPartyModels */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 764106082F3BC1B10008EB12 /* XCLocalSwiftPackageReference "TicketPartyPackage" */;
+			productName = TicketPartyModels;
+		};
+		764106292F3BC9A10008EB12 /* TicketPartyUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 764106082F3BC1B10008EB12 /* XCLocalSwiftPackageReference "TicketPartyPackage" */;
 			productName = TicketPartyUI;

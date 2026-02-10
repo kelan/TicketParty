@@ -2,15 +2,6 @@ import Foundation
 import SwiftData
 import TicketPartyModels
 
-public struct TicketSummary: Codable {
-    public let id: UUID
-    public let displayID: String
-    public let title: String
-    public let priority: String
-    public let severity: String
-    public let updatedAt: Date
-}
-
 public enum TicketPartyTicketStore {
     public static func listTickets() throws -> [TicketSummary] {
         let context = try makeContext()
