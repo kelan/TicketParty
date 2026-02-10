@@ -10,19 +10,27 @@ import SwiftData
 
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: [SortDescriptor(\Task.ticketNumber)]) private var tasks: [Task]
 
     var body: some View {
         NavigationSplitView {
             List {
-                ForEach(items) { item in
+                ForEach(tasks) { task in
                     NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
+                        Text(task.title)
                     } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(task.displayID)
+                                .font(.headline)
+                            Text(task.title)
+                                .font(.subheadline)
+                            Text(task.priority.rawValue.capitalized)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
+                .onDelete(perform: deleteTasks)
             }
 #if os(macOS)
             .navigationSplitViewColumnWidth(min: 180, ideal: 200)
@@ -34,33 +42,40 @@ struct ContentView: View {
                 }
 #endif
                 ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
+                    Button(action: addTask) {
+                        Label("Add Task", systemImage: "plus")
                     }
                 }
             }
         } detail: {
-            Text("Select an item")
+            Text("Select a task")
         }
     }
 
-    private func addItem() {
+    private func addTask() {
         withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+            let nextTicketNumber = (tasks.last?.ticketNumber ?? 0) + 1
+            let newTask = Task(
+                ticketNumber: nextTicketNumber,
+                displayID: "TT-\(nextTicketNumber)",
+                title: "New Task \(nextTicketNumber)"
+            )
+            modelContext.insert(newTask)
+            try? modelContext.save()
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
+    private func deleteTasks(offsets: IndexSet) {
         withAnimation {
             for index in offsets {
-                modelContext.delete(items[index])
+                modelContext.delete(tasks[index])
             }
+            try? modelContext.save()
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: Task.self, inMemory: true)
 }

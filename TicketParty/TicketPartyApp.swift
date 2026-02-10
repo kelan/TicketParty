@@ -12,7 +12,16 @@ import SwiftData
 struct TicketPartyApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Task.self,
+            Note.self,
+            Comment.self,
+            Workflow.self,
+            WorkflowState.self,
+            WorkflowTransition.self,
+            Assignment.self,
+            Agent.self,
+            TaskEvent.self,
+            SessionMarker.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
