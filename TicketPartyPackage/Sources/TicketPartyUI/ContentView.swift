@@ -141,23 +141,18 @@ public struct TicketPartyRootView: View {
         let normalizedDraft = draft.normalized
         guard let projectID = normalizedDraft.projectID else { return }
 
-        var descriptor = FetchDescriptor<Ticket>(
-            sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .reverse)]
-        )
+        var descriptor = FetchDescriptor<Ticket>(sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .reverse)])
         descriptor.fetchLimit = 1
 
-        let currentMaxNumber: Int
-        do {
-            currentMaxNumber = try modelContext.fetch(descriptor).first?.ticketNumber ?? 0
-        } catch {
-            currentMaxNumber = 0
-        }
+        let currentMaxNumber = (try? modelContext.fetch(descriptor).first?.ticketNumber) ?? 0
         let nextTicketNumber = currentMaxNumber + 1
+        let nextOrderKey = (try? TicketOrdering.nextSeedOrderKey(context: modelContext, projectID: projectID)) ?? TicketOrdering.keyStep
 
         let ticket = Ticket(
             ticketNumber: nextTicketNumber,
             displayID: "TT-\(nextTicketNumber)",
             projectID: projectID,
+            orderKey: nextOrderKey,
             title: normalizedDraft.title,
             description: normalizedDraft.description,
             priority: normalizedDraft.priority,
@@ -222,6 +217,7 @@ public struct TicketPartyRootView: View {
                         ticketNumber: ticketNumber,
                         displayID: "TT-\(ticketNumber)",
                         projectID: project.id,
+                        orderKey: Int64(ticketNumber) * TicketOrdering.keyStep,
                         title: ticket.title,
                         description: ticket.latestNote,
                         priority: ticket.priority.ticketPriority,

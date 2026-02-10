@@ -26,6 +26,7 @@ public enum TicketPartyTicketStore {
         let ticket = Ticket(
             ticketNumber: nextTicketNumber,
             displayID: "TT-\(nextTicketNumber)",
+            orderKey: Int64(nextTicketNumber) * 1024,
             title: title,
             description: description
         )

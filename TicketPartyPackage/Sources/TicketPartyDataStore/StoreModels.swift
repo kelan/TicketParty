@@ -37,6 +37,7 @@ public final class Ticket {
     @Attribute(.unique) public var ticketNumber: Int
     @Attribute(.unique) public var displayID: String
     public var projectID: UUID?
+    public var orderKey: Int64 = 0
     public var title: String
     public var ticketDescription: String
     public var priority: TicketPriority
@@ -54,6 +55,7 @@ public final class Ticket {
         ticketNumber: Int,
         displayID: String,
         projectID: UUID? = nil,
+        orderKey: Int64 = 0,
         title: String,
         description: String = "",
         priority: TicketPriority = .medium,
@@ -70,6 +72,7 @@ public final class Ticket {
         self.ticketNumber = ticketNumber
         self.displayID = displayID
         self.projectID = projectID
+        self.orderKey = orderKey
         self.title = title
         ticketDescription = description
         self.priority = priority

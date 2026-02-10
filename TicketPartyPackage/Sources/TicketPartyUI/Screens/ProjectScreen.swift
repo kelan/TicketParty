@@ -5,7 +5,7 @@ import TicketPartyModels
 
 struct ProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse), SortDescriptor(\Ticket.ticketNumber, order: .reverse)]) private var allTickets: [Ticket]
+    @Query(sort: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]) private var allTickets: [Ticket]
 
     @Bindable var project: Project
     let onRequestNewTicket: (UUID?) -> Void
@@ -24,7 +24,9 @@ struct ProjectDetailView: View {
 
     private var tickets: [Ticket] {
         allTickets.filter { ticket in
-            ticket.archivedAt == nil && ticket.projectID == project.id
+            ticket.archivedAt == nil &&
+                ticket.closedAt == nil &&
+                ticket.projectID == project.id
         }
     }
 
@@ -35,6 +37,10 @@ struct ProjectDetailView: View {
             let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
             return priorityMatches && highPriorityMatches && searchMatches
         }
+    }
+
+    private var isManualSortEnabled: Bool {
+        selectedPriorityFilter == nil && showHighPriorityOnly == false && searchText.isEmpty
     }
 
     private var selectedTicket: Ticket? {
@@ -53,7 +59,9 @@ struct ProjectDetailView: View {
             selectedPriorityFilter: $selectedPriorityFilter,
             showHighPriorityOnly: $showHighPriorityOnly,
             searchText: $searchText,
-            selectedTicket: selectedTicket
+            selectedTicket: selectedTicket,
+            isManualSortEnabled: isManualSortEnabled,
+            onMoveTickets: moveTickets
         )
         .navigationTitle(project.name)
         .toolbar {
@@ -151,6 +159,32 @@ struct ProjectDetailView: View {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
+
+    private func moveTickets(from source: IndexSet, to destination: Int) {
+        guard isManualSortEnabled else { return }
+        guard let movedSourceIndex = source.first else { return }
+        let movedTicketID = filteredTickets[movedSourceIndex].id
+
+        var reorderedIDs = filteredTickets.map(\.id)
+        reorderedIDs.move(fromOffsets: source, toOffset: destination)
+
+        guard let movedIndex = reorderedIDs.firstIndex(of: movedTicketID) else { return }
+        let beforeID = movedIndex > 0 ? reorderedIDs[movedIndex - 1] : nil
+        let afterID = (movedIndex + 1) < reorderedIDs.count ? reorderedIDs[movedIndex + 1] : nil
+
+        do {
+            try TicketOrdering.moveTicket(
+                context: modelContext,
+                ticketID: movedTicketID,
+                projectID: project.id,
+                stateID: nil,
+                beforeTicketID: beforeID,
+                afterTicketID: afterID
+            )
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
 }
 
 private struct ProjectWorkspaceView: View {
@@ -160,6 +194,8 @@ private struct ProjectWorkspaceView: View {
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
     let selectedTicket: Ticket?
+    let isManualSortEnabled: Bool
+    let onMoveTickets: (IndexSet, Int) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -172,20 +208,24 @@ private struct ProjectWorkspaceView: View {
 
             Divider()
 
-            List(filteredTickets, selection: $selectedTicketID) { ticket in
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(ticket.title)
-                        .font(.headline)
+            List(selection: $selectedTicketID) {
+                ForEach(filteredTickets, id: \.id) { ticket in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(ticket.title)
+                            .font(.headline)
 
-                    HStack(spacing: 8) {
-                        Text(ticket.displayID)
-                        Text(ticket.priority.title)
-                        Text(ticket.severity.title)
+                        HStack(spacing: 8) {
+                            Text(ticket.displayID)
+                            Text(ticket.priority.title)
+                            Text(ticket.severity.title)
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 2)
+                    .moveDisabled(isManualSortEnabled == false)
                 }
-                .padding(.vertical, 2)
+                .onMove(perform: onMoveTickets)
             }
             .frame(minWidth: 320, idealWidth: 380)
 
@@ -193,6 +233,14 @@ private struct ProjectWorkspaceView: View {
 
             ProjectTicketDetailPanel(ticket: selectedTicket)
                 .frame(minWidth: 300, idealWidth: 420)
+        }
+        .overlay(alignment: .bottomLeading) {
+            if isManualSortEnabled == false {
+                Text("Clear filters and search to manually reorder tickets.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
         }
     }
 }
@@ -349,6 +397,7 @@ private enum ProjectPreviewData {
                 ticketNumber: index + 1,
                 displayID: "TT-\(index + 1)",
                 projectID: project.id,
+                orderKey: Int64(index + 1) * TicketOrdering.keyStep,
                 title: ticket.title,
                 description: ticket.latestNote,
                 priority: ticket.priority.ticketPriority,

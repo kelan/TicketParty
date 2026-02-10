@@ -7,11 +7,12 @@ struct OverallKanbanView: View {
     let projects: [Project]
     private let priorities = TicketPriority.allCases
 
-    @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse), SortDescriptor(\Ticket.ticketNumber, order: .reverse)]) private var tickets: [Ticket]
+    @Query(sort: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]) private var tickets: [Ticket]
 
     private func tickets(for project: Project, priority: TicketPriority) -> [Ticket] {
         tickets.filter { ticket in
             ticket.archivedAt == nil &&
+                ticket.closedAt == nil &&
                 ticket.projectID == project.id &&
                 ticket.priority == priority
         }
