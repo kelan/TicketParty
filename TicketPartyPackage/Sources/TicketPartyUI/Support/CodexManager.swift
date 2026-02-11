@@ -660,11 +660,17 @@ actor CodexManager {
     }
 }
 
+struct CodexTicketOutputSnapshot {
+    let text: String
+    let isTruncated: Bool
+}
+
 @MainActor
 @Observable
 final class CodexViewModel {
     private let manager: CodexManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
+    private let transcriptStore: TicketTranscriptStore
     private let minSpinnerDuration: Duration = .seconds(1)
     private var eventTask: Task<Void, Never>?
     private var supervisorHealthTask: Task<Void, Never>?
@@ -673,14 +679,24 @@ final class CodexViewModel {
     var ticketOutput: [UUID: String] = [:]
     var ticketErrors: [UUID: String] = [:]
     var ticketIsSending: [UUID: Bool] = [:]
+    var activeRunByTicketID: [UUID: UUID] = [:]
     var supervisorHealth: CodexSupervisorHealthStatus = .notRunning
 
     init(
         manager: CodexManager = CodexManager(),
-        supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker()
+        supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker(),
+        transcriptStore: TicketTranscriptStore = TicketTranscriptStore()
     ) {
         self.manager = manager
         self.supervisorHealthChecker = supervisorHealthChecker
+        self.transcriptStore = transcriptStore
+
+        do {
+            try transcriptStore.markInterruptedRunsAsFailed(now: .now)
+        } catch {
+            NSLog("Ticket transcript recovery failed: %@", error.localizedDescription)
+        }
+
         eventTask = Task { [manager, weak self] in
             for await event in manager.events {
                 guard let self else { return }
@@ -708,8 +724,18 @@ final class CodexViewModel {
         let description = ticket.ticketDescription
         let clock = ContinuousClock()
         let start = clock.now
+        let runID: UUID
 
         guard ticketIsSending[ticketID] != true else {
+            return
+        }
+
+        do {
+            runID = try transcriptStore.startRun(projectID: projectID, ticketID: ticketID, requestID: nil)
+            activeRunByTicketID[ticketID] = runID
+            ticketOutput[ticketID] = ""
+        } catch {
+            ticketErrors[ticketID] = "Failed to start transcript run: \(error.localizedDescription)"
             return
         }
 
@@ -728,6 +754,12 @@ final class CodexViewModel {
             )
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
+            do {
+                try transcriptStore.completeRun(runID: runID, success: false, summary: error.localizedDescription)
+            } catch {
+                NSLog("Failed to finalize transcript for send error: %@", error.localizedDescription)
+            }
+            activeRunByTicketID.removeValue(forKey: ticketID)
 
             let elapsed = start.duration(to: clock.now)
             if elapsed < minSpinnerDuration {
@@ -742,6 +774,9 @@ final class CodexViewModel {
 
         do {
             try await manager.stopWorker(projectID: project.id)
+            if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
+                try? transcriptStore.completeRun(runID: runID, success: false, summary: "Cancelled by user.")
+            }
             setTicketSending(false, for: ticketID)
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
@@ -754,6 +789,27 @@ final class CodexViewModel {
 
     func output(for ticketID: UUID) -> String {
         ticketOutput[ticketID, default: ""]
+    }
+
+    func outputSnapshot(for ticketID: UUID, maxBytes: Int?) -> CodexTicketOutputSnapshot {
+        if activeRunByTicketID[ticketID] != nil {
+            return CodexTicketOutputSnapshot(text: ticketOutput[ticketID, default: ""], isTruncated: false)
+        }
+
+        do {
+            guard let run = try transcriptStore.latestRun(ticketID: ticketID) else {
+                return CodexTicketOutputSnapshot(text: ticketOutput[ticketID, default: ""], isTruncated: false)
+            }
+            let text = try transcriptStore.loadTranscript(runID: run.id, maxBytes: maxBytes)
+            let isTruncated = if let maxBytes, maxBytes > 0 {
+                run.byteCount > Int64(maxBytes)
+            } else {
+                false
+            }
+            return CodexTicketOutputSnapshot(text: text, isTruncated: isTruncated)
+        } catch {
+            return CodexTicketOutputSnapshot(text: ticketOutput[ticketID, default: ""], isTruncated: false)
+        }
     }
 
     func refreshSupervisorHealth() async {
@@ -777,12 +833,28 @@ final class CodexViewModel {
                 updatedOutput += line
             }
             ticketOutput[ticketID] = updatedOutput
+
+            if let runID = activeRunByTicketID[ticketID] {
+                do {
+                    try transcriptStore.appendOutput(runID: runID, line: line)
+                } catch {
+                    NSLog("Failed to append transcript output: %@", error.localizedDescription)
+                }
+            }
+
             if let completion = agentTicketCompletion(from: line) {
                 applyTicketCompletion(ticketID: ticketID, success: completion.success, summary: completion.summary)
             }
 
         case let .ticketError(ticketID, message):
             ticketErrors[ticketID] = message
+            if let runID = activeRunByTicketID[ticketID] {
+                do {
+                    try transcriptStore.appendError(runID: runID, message: message)
+                } catch {
+                    NSLog("Failed to append transcript error: %@", error.localizedDescription)
+                }
+            }
 
         case let .ticketCompleted(ticketID, success, summary):
             applyTicketCompletion(ticketID: ticketID, success: success, summary: summary)
@@ -790,6 +862,14 @@ final class CodexViewModel {
     }
 
     private func applyTicketCompletion(ticketID: UUID, success: Bool, summary: String?) {
+        if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
+            do {
+                try transcriptStore.completeRun(runID: runID, success: success, summary: summary)
+            } catch {
+                NSLog("Failed to complete transcript run: %@", error.localizedDescription)
+            }
+        }
+
         if success {
             ticketErrors[ticketID] = nil
         } else if let summary, summary.isEmpty == false {

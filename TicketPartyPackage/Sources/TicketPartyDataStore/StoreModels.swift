@@ -276,6 +276,61 @@ final class Agent {
 }
 
 @Model
+public final class TicketTranscriptRun {
+    @Attribute(.unique) public var id: UUID
+    public var projectID: UUID
+    public var ticketID: UUID
+    public var requestID: UUID?
+    public var statusRaw: String
+    public var startedAt: Date
+    public var completedAt: Date?
+    public var summary: String?
+    public var errorMessage: String?
+    public var fileRelativePath: String
+    public var lineCount: Int
+    public var byteCount: Int64
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public var status: TicketTranscriptStatus {
+        get { TicketTranscriptStatus(rawValue: statusRaw) ?? .running }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    public init(
+        id: UUID = UUID(),
+        projectID: UUID,
+        ticketID: UUID,
+        requestID: UUID? = nil,
+        status: TicketTranscriptStatus = .running,
+        startedAt: Date = .now,
+        completedAt: Date? = nil,
+        summary: String? = nil,
+        errorMessage: String? = nil,
+        fileRelativePath: String,
+        lineCount: Int = 0,
+        byteCount: Int64 = 0,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.ticketID = ticketID
+        self.requestID = requestID
+        statusRaw = status.rawValue
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.summary = summary
+        self.errorMessage = errorMessage
+        self.fileRelativePath = fileRelativePath
+        self.lineCount = lineCount
+        self.byteCount = byteCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+@Model
 final class TicketEvent {
     @Attribute(.unique) var id: UUID
     var ticketID: UUID

@@ -68,6 +68,13 @@ public enum SessionMarkerType: String, Codable, CaseIterable, Sendable {
     case digestViewed = "digest_viewed"
 }
 
+public enum TicketTranscriptStatus: String, Codable, CaseIterable, Sendable {
+    case running
+    case succeeded
+    case failed
+    case cancelled
+}
+
 public struct TicketSummary: Codable, Hashable, Sendable {
     public let id: UUID
     public let displayID: String
@@ -352,5 +359,54 @@ public struct SessionMarkerDTO: Codable, Hashable, Identifiable, Sendable {
         self.id = id
         self.type = type
         self.timestamp = timestamp
+    }
+}
+
+public struct TicketTranscriptRunDTO: Codable, Hashable, Identifiable, Sendable {
+    public let id: UUID
+    public let projectID: UUID
+    public let ticketID: UUID
+    public let requestID: UUID?
+    public let status: TicketTranscriptStatus
+    public let startedAt: Date
+    public let completedAt: Date?
+    public let summary: String?
+    public let errorMessage: String?
+    public let fileRelativePath: String
+    public let lineCount: Int
+    public let byteCount: Int64
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    public init(
+        id: UUID,
+        projectID: UUID,
+        ticketID: UUID,
+        requestID: UUID?,
+        status: TicketTranscriptStatus,
+        startedAt: Date,
+        completedAt: Date?,
+        summary: String?,
+        errorMessage: String?,
+        fileRelativePath: String,
+        lineCount: Int,
+        byteCount: Int64,
+        createdAt: Date,
+        updatedAt: Date
+    ) {
+        self.id = id
+        self.projectID = projectID
+        self.ticketID = ticketID
+        self.requestID = requestID
+        self.status = status
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.summary = summary
+        self.errorMessage = errorMessage
+        self.fileRelativePath = fileRelativePath
+        self.lineCount = lineCount
+        self.byteCount = byteCount
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
     }
 }

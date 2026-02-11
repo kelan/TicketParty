@@ -593,11 +593,18 @@ private struct ProjectTicketDetailPanel: View {
                         }
 
                         ScrollView {
-                            let output = codexViewModel.output(for: ticket.id)
-                            Text(output.isEmpty ? "No output yet." : output)
+                            let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
+                            Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
                                 .font(.system(.caption, design: .monospaced))
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                            if outputSnapshot.isTruncated {
+                                Text("Showing latest output segment.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                            }
                         }
                         .frame(minHeight: 180)
                     }

@@ -14,6 +14,7 @@ public enum TicketPartyPersistence {
             WorkflowTransition.self,
             Assignment.self,
             Agent.self,
+            TicketTranscriptRun.self,
             TicketEvent.self,
             SessionMarker.self,
         ])
