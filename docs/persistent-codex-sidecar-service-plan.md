@@ -140,6 +140,12 @@ Cons:
 4. Add `ticket.completed` terminal event requirement.
 5. Use json runtime files and stale-record reap.
 
+Phase 1 scaffolding now exists in the repo:
+
+- SwiftPM executable target: `codex-supervisor`
+- Entry point: `/Users/kelan/Projects/TicketParty/TicketPartyPackage/Sources/codex-supervisor/main.swift`
+- Build/install/start tasks in `/Users/kelan/Projects/TicketParty/Justfile`
+
 ### Phase 2: Robust Lifecycle
 
 1. Move startup to `launchd` LaunchAgent.
@@ -192,3 +198,21 @@ If you want fastest path now:
 3. migrate to **LaunchAgent** once loop behavior is stable.
 
 This gives near-term robustness with a low rewrite cost and preserves your current project-scoped worker model.
+
+## Local Commands (Scaffold)
+
+Use the new `just` recipes:
+
+1. Build supervisor:
+   - `just supervisor-build`
+2. Install supervisor binary:
+   - `just supervisor-install`
+3. Install/validate LaunchAgent plist:
+   - `just supervisor-install-agent`
+4. Start (or restart) LaunchAgent:
+   - `just supervisor-start`
+5. Stop LaunchAgent:
+   - `just supervisor-stop`
+6. Check status/logs:
+   - `just supervisor-status`
+   - `just supervisor-logs`

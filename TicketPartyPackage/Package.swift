@@ -23,6 +23,10 @@ let package = Package(
             name: "tp",
             targets: ["tp-cli"]
         ),
+        .executable(
+            name: "codex-supervisor",
+            targets: ["codex-supervisor"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-concurrency-extras", from: "1.0.0"),
@@ -48,6 +52,10 @@ let package = Package(
         .executableTarget(
             name: "tp-cli",
             dependencies: ["TicketPartyModels"]
+        ),
+        .executableTarget(
+            name: "codex-supervisor",
+            dependencies: []
         ),
     ]
 )
