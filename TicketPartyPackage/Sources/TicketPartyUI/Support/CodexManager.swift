@@ -606,18 +606,110 @@ final class CodexViewModel {
                 updatedOutput += line
             }
             ticketOutput[ticketID] = updatedOutput
+            if let completion = agentTicketCompletion(from: line) {
+                applyTicketCompletion(ticketID: ticketID, success: completion.success, summary: completion.summary)
+            }
 
         case let .ticketError(ticketID, message):
             ticketErrors[ticketID] = message
 
         case let .ticketCompleted(ticketID, success, summary):
-            if success {
-                ticketErrors[ticketID] = nil
-            } else if let summary, summary.isEmpty == false {
-                ticketErrors[ticketID] = summary
-            }
-            setTicketSending(false, for: ticketID)
+            applyTicketCompletion(ticketID: ticketID, success: success, summary: summary)
         }
+    }
+
+    private func applyTicketCompletion(ticketID: UUID, success: Bool, summary: String?) {
+        if success {
+            ticketErrors[ticketID] = nil
+        } else if let summary, summary.isEmpty == false {
+            ticketErrors[ticketID] = summary
+        }
+        setTicketSending(false, for: ticketID)
+    }
+
+    private func agentTicketCompletion(from line: String) -> (success: Bool, summary: String?)? {
+        guard line.contains("ticket.completed") else {
+            return nil
+        }
+
+        guard let payload = parseJSONObject(from: line) else {
+            // If the line is unstructured text but clearly includes the completion marker,
+            // still treat it as a terminal success signal.
+            return (true, nil)
+        }
+
+        guard let completionPayload = findTicketCompletedPayload(in: payload) else {
+            return nil
+        }
+
+        let success = completionPayload["success"] as? Bool ?? true
+        let summary = completionPayload["summary"] as? String
+            ?? completionPayload["error"] as? String
+            ?? completionPayload["message"] as? String
+        return (success, summary)
+    }
+
+    private func parseJSONObject(from line: String) -> [String: Any]? {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let decoded = decodeJSONObject(from: trimmed) {
+            return decoded
+        }
+
+        let payloadLine: String
+        if trimmed.hasPrefix("data:") {
+            payloadLine = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let decoded = decodeJSONObject(from: payloadLine) {
+                return decoded
+            }
+        } else {
+            payloadLine = trimmed
+        }
+
+        guard
+            let start = payloadLine.firstIndex(of: "{"),
+            let end = payloadLine.lastIndex(of: "}"),
+            start <= end
+        else {
+            return nil
+        }
+
+        let slice = payloadLine[start ... end]
+        return decodeJSONObject(from: String(slice))
+    }
+
+    private func decodeJSONObject(from text: String) -> [String: Any]? {
+        guard let data = text.data(using: .utf8) else {
+            return nil
+        }
+        guard let object = try? JSONSerialization.jsonObject(with: data) else {
+            return nil
+        }
+        return object as? [String: Any]
+    }
+
+    private func findTicketCompletedPayload(in value: Any) -> [String: Any]? {
+        if let dictionary = value as? [String: Any] {
+            if let type = dictionary["type"] as? String, type == "ticket.completed" {
+                return dictionary
+            }
+
+            for nestedValue in dictionary.values {
+                if let match = findTicketCompletedPayload(in: nestedValue) {
+                    return match
+                }
+            }
+            return nil
+        }
+
+        if let array = value as? [Any] {
+            for element in array {
+                if let match = findTicketCompletedPayload(in: element) {
+                    return match
+                }
+            }
+        }
+
+        return nil
     }
 
     private func setTicketSending(_ isSending: Bool, for ticketID: UUID) {
