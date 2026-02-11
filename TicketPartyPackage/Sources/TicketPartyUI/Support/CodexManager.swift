@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Observation
 import TicketPartyDataStore
@@ -27,16 +28,15 @@ actor CodexManager {
         case statusChanged(projectID: UUID, status: CodexProjectStatus)
         case ticketOutput(ticketID: UUID, line: String)
         case ticketError(ticketID: UUID, message: String)
+        case ticketCompleted(ticketID: UUID, success: Bool, summary: String?)
     }
 
     enum ManagerError: LocalizedError {
         case missingWorkingDirectory
         case invalidWorkingDirectory(String)
-        case missingNodeBinary
-        case missingSidecarScript(String)
-        case sidecarLaunchFailed(String)
-        case stdinUnavailable
-        case writeFailed(String)
+        case supervisorUnavailable(String)
+        case invalidResponse(String)
+        case requestFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -44,54 +44,42 @@ actor CodexManager {
                 return "Project working directory is required before sending to Codex."
             case let .invalidWorkingDirectory(path):
                 return "Project working directory is invalid: \(path)"
-            case .missingNodeBinary:
-                return "Node.js executable not found. Install Node or set NODE_BINARY."
-            case let .missingSidecarScript(path):
-                return "Codex sidecar script not found: \(path)"
-            case let .sidecarLaunchFailed(message):
-                return "Failed to launch Codex sidecar: \(message)"
-            case .stdinUnavailable:
-                return "Codex sidecar stdin is unavailable."
-            case let .writeFailed(message):
-                return "Failed to send prompt to Codex sidecar: \(message)"
+            case let .supervisorUnavailable(message):
+                return "Could not reach codex-supervisor: \(message)"
+            case let .invalidResponse(message):
+                return "Supervisor returned invalid data: \(message)"
+            case let .requestFailed(message):
+                return "Supervisor request failed: \(message)"
             }
         }
     }
 
-    private struct SidecarCommand: Encodable {
-        let threadId: String
+    private struct SendTicketRequest: Encodable {
+        let type = "sendTicket"
+        let projectID: String
+        let ticketID: String
+        let requestID: String
+        let workingDirectory: String
         let prompt: String
     }
 
-    private struct Session {
-        let process: Process
-        let stdin: FileHandle
-        let stdout: FileHandle
-        let stderr: FileHandle
-    }
-
-    private struct LineBuffer {
-        var stdout: Data = .init()
-        var stderr: Data = .init()
-    }
-
-    enum StreamSource {
-        case stdout
-        case stderr
+    private struct SubscribeRequest: Encodable {
+        let type = "subscribe"
     }
 
     nonisolated let events: AsyncStream<Event>
     private let continuation: AsyncStream<Event>.Continuation
 
-    private let sidecarScriptPath: String
     private let fileManager: FileManager
-    private var sessions: [UUID: Session] = [:]
+    private let supervisorSocketPath: String
+
     private var statuses: [UUID: CodexProjectStatus] = [:]
-    private var activeTicketByProject: [UUID: UUID] = [:]
-    private var lineBuffers: [UUID: LineBuffer] = [:]
+    private var requestToTicket: [UUID: UUID] = [:]
+    private var requestToProject: [UUID: UUID] = [:]
+    private var subscriptionTask: Task<Void, Never>?
 
     init(
-        sidecarScriptPath: String = "/Users/kelan/dev/codex-sidecar/sidecar.mjs",
+        supervisorSocketPath: String = "$HOME/Library/Application Support/TicketParty/runtime/supervisor.sock",
         fileManager: FileManager = .default
     ) {
         var streamContinuation: AsyncStream<Event>.Continuation?
@@ -99,11 +87,15 @@ actor CodexManager {
             streamContinuation = continuation
         }
         continuation = streamContinuation!
-        self.sidecarScriptPath = sidecarScriptPath
+
         self.fileManager = fileManager
+        self.supervisorSocketPath = Self.expandPath(supervisorSocketPath)
+
+        subscriptionTask = nil
     }
 
     deinit {
+        subscriptionTask?.cancel()
         continuation.finish()
     }
 
@@ -119,180 +111,136 @@ actor CodexManager {
         description: String
     ) throws {
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
-        try ensureSession(projectID: projectID, workingDirectory: resolvedWorkingDirectory)
+        startSubscriptionTaskIfNeeded()
 
-        activeTicketByProject[projectID] = ticketID
-
-        let payload = SidecarCommand(
-            threadId: ticketID.uuidString,
+        let requestID = UUID()
+        let request = SendTicketRequest(
+            projectID: projectID.uuidString,
+            ticketID: ticketID.uuidString,
+            requestID: requestID.uuidString,
+            workingDirectory: resolvedWorkingDirectory,
             prompt: "\(title)\n\(description)"
         )
 
-        let encoder = JSONEncoder()
-        var data = try encoder.encode(payload)
-        data.append(0x0A)
+        let payload = try Self.encodeLine(request)
 
-        guard let session = sessions[projectID] else {
-            throw ManagerError.stdinUnavailable
-        }
-
+        let responseObject: [String: Any]
         do {
-            try session.stdin.write(contentsOf: data)
+            responseObject = try Self.sendRequest(
+                payload: payload,
+                socketPath: supervisorSocketPath,
+                receiveTimeout: 5,
+                sendTimeout: 5
+            )
+        } catch let error as ManagerError {
+            throw error
         } catch {
-            throw ManagerError.writeFailed(error.localizedDescription)
+            throw ManagerError.supervisorUnavailable(error.localizedDescription)
         }
+
+        guard let type = responseObject["type"] as? String else {
+            throw ManagerError.invalidResponse("Missing response type.")
+        }
+
+        if type == "error" {
+            let message = responseObject["message"] as? String ?? "Unknown supervisor error."
+            throw ManagerError.requestFailed(message)
+        }
+
+        guard type == "sendTicket.ok" else {
+            throw ManagerError.invalidResponse("Unexpected sendTicket response type '\(type)'.")
+        }
+
+        requestToTicket[requestID] = ticketID
+        requestToProject[requestID] = projectID
+        setStatus(.starting, for: projectID)
     }
 
-    private func ensureSession(projectID: UUID, workingDirectory: String) throws {
-        if let session = sessions[projectID], session.process.isRunning {
+    private func startSubscriptionTaskIfNeeded() {
+        if let subscriptionTask, subscriptionTask.isCancelled == false {
             return
         }
 
-        if let existing = sessions.removeValue(forKey: projectID) {
-            existing.stdout.readabilityHandler = nil
-            existing.stderr.readabilityHandler = nil
-            existing.process.terminationHandler = nil
-            existing.stdin.closeFile()
-            existing.stdout.closeFile()
-            existing.stderr.closeFile()
-        }
-
-        let sidecarScript = try resolveSidecarScriptPath()
-        let nodeExecutable = try resolveNodeExecutablePath()
-
-        setStatus(.starting, for: projectID)
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: nodeExecutable)
-        process.arguments = [sidecarScript]
-        process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
-
-        let stdinPipe = Pipe()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-
-        process.standardInput = stdinPipe
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
-
-        let stdoutHandle = stdoutPipe.fileHandleForReading
-        let stderrHandle = stderrPipe.fileHandleForReading
-
-        stdoutHandle.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task { await self?.consume(data: data, projectID: projectID, source: .stdout) }
-        }
-
-        stderrHandle.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task { await self?.consume(data: data, projectID: projectID, source: .stderr) }
-        }
-
-        process.terminationHandler = { [weak self] terminatedProcess in
-            Task {
-                await self?.handleTermination(
-                    projectID: projectID,
-                    statusCode: terminatedProcess.terminationStatus
-                )
-            }
-        }
-
-        do {
-            try process.run()
-        } catch {
-            stdoutHandle.readabilityHandler = nil
-            stderrHandle.readabilityHandler = nil
-            setStatus(.error("Failed to launch sidecar process."), for: projectID)
-            throw ManagerError.sidecarLaunchFailed(error.localizedDescription)
-        }
-
-        sessions[projectID] = Session(
-            process: process,
-            stdin: stdinPipe.fileHandleForWriting,
-            stdout: stdoutHandle,
-            stderr: stderrHandle
-        )
-        lineBuffers[projectID] = LineBuffer()
-        setStatus(.running, for: projectID)
-    }
-
-    private func consume(data: Data, projectID: UUID, source: StreamSource) {
-        guard data.isEmpty == false else { return }
-
-        var buffer = lineBuffers[projectID] ?? LineBuffer()
-        let extracted: (lines: [String], remainder: Data)
-
-        switch source {
-        case .stdout:
-            buffer.stdout.append(data)
-            extracted = Self.extractLines(from: buffer.stdout)
-            buffer.stdout = extracted.remainder
-        case .stderr:
-            buffer.stderr.append(data)
-            extracted = Self.extractLines(from: buffer.stderr)
-            buffer.stderr = extracted.remainder
-        }
-
-        lineBuffers[projectID] = buffer
-
-        for line in extracted.lines {
-            guard let ticketID = activeTicketByProject[projectID] else { continue }
-
-            switch source {
-            case .stdout:
-                continuation.yield(.ticketOutput(ticketID: ticketID, line: line))
-            case .stderr:
-                continuation.yield(.ticketError(ticketID: ticketID, message: line))
+        let socketPath = supervisorSocketPath
+        subscriptionTask = Task.detached { [weak self, socketPath] in
+            await Self.runSubscriptionLoop(socketPath: socketPath) { [weak self] in
+                self
             }
         }
     }
 
-    private func handleTermination(projectID: UUID, statusCode: Int32) {
-        guard let session = sessions.removeValue(forKey: projectID) else { return }
+    private func consumeSupervisorLine(_ line: String) {
+        guard let data = line.data(using: .utf8) else { return }
+        guard let payload = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return }
 
-        session.stdout.readabilityHandler = nil
-        session.stderr.readabilityHandler = nil
-        session.stdin.closeFile()
-        session.stdout.closeFile()
-        session.stderr.closeFile()
+        guard let type = payload["type"] as? String else { return }
 
-        flushRemainders(for: projectID)
-        lineBuffers.removeValue(forKey: projectID)
+        switch type {
+        case "worker.started":
+            guard let projectID = parseUUID(payload["projectID"] as? String) else { return }
+            setStatus(.running, for: projectID)
 
-        if statusCode == 0 {
-            setStatus(.stopped, for: projectID)
-        } else {
-            let message: String
-            if statusCode == 127 {
-                message = "Sidecar exited with status 127 (command not found). Verify Node is installed and set NODE_BINARY if needed."
+        case "worker.exited":
+            guard let projectID = parseUUID(payload["projectID"] as? String) else { return }
+            if let message = payload["message"] as? String {
+                setStatus(.error(message), for: projectID)
             } else {
-                message = "Sidecar exited with status \(statusCode)."
+                setStatus(.stopped, for: projectID)
             }
-            setStatus(.error(message), for: projectID)
-            if let ticketID = activeTicketByProject[projectID] {
-                continuation.yield(.ticketError(ticketID: ticketID, message: message))
-            }
+
+        case "ticket.output":
+            guard let ticketID = resolveTicketID(payload: payload) else { return }
+            let line = payload["text"] as? String ?? ""
+            continuation.yield(.ticketOutput(ticketID: ticketID, line: line))
+
+        case "ticket.error":
+            guard let ticketID = resolveTicketID(payload: payload) else { return }
+            let message = payload["message"] as? String ?? "Unknown ticket error"
+            continuation.yield(.ticketError(ticketID: ticketID, message: message))
+
+        case "ticket.completed":
+            guard let ticketID = resolveTicketID(payload: payload) else { return }
+            let success = payload["success"] as? Bool ?? false
+            let summary = payload["summary"] as? String
+            continuation.yield(.ticketCompleted(ticketID: ticketID, success: success, summary: summary))
+            clearRequestMappings(payload: payload)
+
+        default:
+            break
         }
     }
 
-    private func flushRemainders(for projectID: UUID) {
-        guard let buffer = lineBuffers[projectID] else { return }
-        guard let ticketID = activeTicketByProject[projectID] else { return }
+    private func handleSubscriptionDisconnected() {
+        // Keep current status unchanged; reconnect loop will restore streaming on success.
+    }
 
-        if buffer.stdout.isEmpty == false {
-            let line = String(decoding: buffer.stdout, as: UTF8.self)
-            continuation.yield(.ticketOutput(ticketID: ticketID, line: line))
+    private func resolveTicketID(payload: [String: Any]) -> UUID? {
+        if let ticketID = parseUUID(payload["ticketID"] as? String) {
+            return ticketID
         }
+        if
+            let requestID = parseUUID(payload["requestID"] as? String),
+            let ticketID = requestToTicket[requestID]
+        {
+            return ticketID
+        }
+        return nil
+    }
 
-        if buffer.stderr.isEmpty == false {
-            let line = String(decoding: buffer.stderr, as: UTF8.self)
-            continuation.yield(.ticketError(ticketID: ticketID, message: line))
-        }
+    private func clearRequestMappings(payload: [String: Any]) {
+        guard let requestID = parseUUID(payload["requestID"] as? String) else { return }
+        requestToTicket.removeValue(forKey: requestID)
+        requestToProject.removeValue(forKey: requestID)
     }
 
     private func setStatus(_ status: CodexProjectStatus, for projectID: UUID) {
         statuses[projectID] = status
         continuation.yield(.statusChanged(projectID: projectID, status: status))
+    }
+
+    private func parseUUID(_ rawValue: String?) -> UUID? {
+        guard let rawValue else { return nil }
+        return UUID(uuidString: rawValue)
     }
 
     private func resolveWorkingDirectory(_ workingDirectory: String?) throws -> String {
@@ -316,60 +264,225 @@ actor CodexManager {
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
     }
 
-    private func resolveSidecarScriptPath() throws -> String {
-        let expanded = (sidecarScriptPath as NSString).expandingTildeInPath
-        guard fileManager.fileExists(atPath: expanded) else {
-            throw ManagerError.missingSidecarScript(expanded)
-        }
-        return URL(fileURLWithPath: expanded).standardizedFileURL.path
-    }
+    private nonisolated static func runSubscriptionLoop(
+        socketPath: String,
+        owner: @escaping @Sendable () -> CodexManager?
+    ) async {
+        var reconnectDelay: UInt64 = 1_000_000_000
 
-    private func resolveNodeExecutablePath() throws -> String {
-        let explicitNode = ProcessInfo.processInfo.environment["NODE_BINARY"]
-            .map { ($0 as NSString).expandingTildeInPath }
-            .map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+        while Task.isCancelled == false {
+            guard owner() != nil else { return }
 
-        let hardcodedCandidates = [
-            explicitNode,
-            "/opt/homebrew/bin/node",
-            "/usr/local/bin/node",
-            "/usr/bin/node",
-        ].compactMap { $0 }
-
-        let pathEntries = ProcessInfo.processInfo.environment["PATH"]?
-            .split(separator: ":")
-            .map(String.init) ?? []
-        let defaultEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
-        let searchedEntries = Array(Set(pathEntries + defaultEntries))
-
-        let pathCandidates = searchedEntries.map { entry in
-            URL(fileURLWithPath: entry).appendingPathComponent("node").path
-        }
-
-        let allCandidates = hardcodedCandidates + pathCandidates
-        for candidate in allCandidates where fileManager.isExecutableFile(atPath: candidate) {
-            return candidate
-        }
-
-        throw ManagerError.missingNodeBinary
-    }
-
-    private static func extractLines(from data: Data) -> (lines: [String], remainder: Data) {
-        var lines: [String] = []
-        var startIndex = data.startIndex
-
-        while let newlineIndex = data[startIndex...].firstIndex(of: 0x0A) {
-            var lineData = data[startIndex ..< newlineIndex]
-            if lineData.last == 0x0D {
-                lineData = lineData.dropLast()
+            let fd: Int32
+            do {
+                fd = try connect(to: socketPath, receiveTimeout: 30, sendTimeout: 5)
+            } catch {
+                await owner()?.handleSubscriptionDisconnected()
+                try? await Task.sleep(nanoseconds: reconnectDelay)
+                reconnectDelay = min(reconnectDelay * 2, 10_000_000_000)
+                continue
             }
-            let line = String(decoding: lineData, as: UTF8.self)
-            lines.append(line)
-            startIndex = data.index(after: newlineIndex)
+
+            defer { Darwin.close(fd) }
+
+            do {
+                let subscribePayload = try encodeLine(SubscribeRequest())
+                guard writeAll(subscribePayload, to: fd) else {
+                    throw ManagerError.supervisorUnavailable("Failed to write subscribe request.")
+                }
+
+                guard let responseLine = readLine(from: fd), let responseData = responseLine.data(using: .utf8) else {
+                    throw ManagerError.supervisorUnavailable("Failed to read subscribe response.")
+                }
+                guard
+                    let responseObject = try (JSONSerialization.jsonObject(with: responseData)) as? [String: Any],
+                    let responseType = responseObject["type"] as? String,
+                    responseType == "subscribe.ok"
+                else {
+                    throw ManagerError.invalidResponse("Supervisor rejected subscribe request.")
+                }
+
+                reconnectDelay = 1_000_000_000
+
+                while Task.isCancelled == false {
+                    guard let line = readLine(from: fd) else {
+                        break
+                    }
+                    guard let currentOwner = owner() else { return }
+                    await currentOwner.consumeSupervisorLine(line)
+                }
+            } catch {
+                await owner()?.handleSubscriptionDisconnected()
+                try? await Task.sleep(nanoseconds: reconnectDelay)
+                reconnectDelay = min(reconnectDelay * 2, 10_000_000_000)
+                continue
+            }
+
+            await owner()?.handleSubscriptionDisconnected()
+            try? await Task.sleep(nanoseconds: reconnectDelay)
+            reconnectDelay = min(reconnectDelay * 2, 10_000_000_000)
+        }
+    }
+
+    private nonisolated static func sendRequest(
+        payload: Data,
+        socketPath: String,
+        receiveTimeout: Int,
+        sendTimeout: Int
+    ) throws -> [String: Any] {
+        let fd = try connect(to: socketPath, receiveTimeout: receiveTimeout, sendTimeout: sendTimeout)
+        defer { Darwin.close(fd) }
+
+        guard writeAll(payload, to: fd) else {
+            throw ManagerError.supervisorUnavailable("Failed to write request.")
         }
 
-        let remainder = Data(data[startIndex...])
-        return (lines, remainder)
+        guard let responseLine = readLine(from: fd), let responseData = responseLine.data(using: .utf8) else {
+            throw ManagerError.supervisorUnavailable("Failed to read response.")
+        }
+
+        guard let responseObject = try (JSONSerialization.jsonObject(with: responseData)) as? [String: Any] else {
+            throw ManagerError.invalidResponse("Response was not a JSON object.")
+        }
+
+        return responseObject
+    }
+
+    private nonisolated static func encodeLine<T: Encodable>(_ value: T) throws -> Data {
+        var payload = try JSONEncoder().encode(value)
+        payload.append(0x0A)
+        return payload
+    }
+
+    private nonisolated static func connect(to socketPath: String, receiveTimeout: Int, sendTimeout: Int) throws -> Int32 {
+        let normalizedSocketPath = expandPath(socketPath)
+        let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw ManagerError.supervisorUnavailable("Failed to open socket: \(String(cString: strerror(errno))).")
+        }
+
+        setNoSigPipe(fd: fd)
+        setTimeout(fd: fd, option: SO_RCVTIMEO, seconds: receiveTimeout)
+        setTimeout(fd: fd, option: SO_SNDTIMEO, seconds: sendTimeout)
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        #if os(macOS)
+            address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        #endif
+
+        let socketPathBytes = normalizedSocketPath.utf8CString
+        let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
+        guard socketPathBytes.count <= maxPathLength else {
+            Darwin.close(fd)
+            throw ManagerError.supervisorUnavailable("Socket path is too long: \(normalizedSocketPath)")
+        }
+
+        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+            rawBuffer.initializeMemory(as: CChar.self, repeating: 0)
+            socketPathBytes.withUnsafeBytes { sourceBuffer in
+                if let destination = rawBuffer.baseAddress, let source = sourceBuffer.baseAddress {
+                    memcpy(destination, source, socketPathBytes.count)
+                }
+            }
+        }
+
+        let connectResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.connect(fd, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+
+        guard connectResult == 0 else {
+            let message = String(cString: strerror(errno))
+            Darwin.close(fd)
+            throw ManagerError.supervisorUnavailable(message)
+        }
+
+        return fd
+    }
+
+    private nonisolated static func readLine(from fd: Int32, maxBytes: Int = 65536) -> String? {
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+
+        while data.count < maxBytes {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count > 0 {
+                data.append(buffer, count: count)
+                if data.contains(0x0A) {
+                    break
+                }
+            } else if count == 0 {
+                break
+            } else if errno == EINTR {
+                continue
+            } else {
+                return nil
+            }
+        }
+
+        guard data.isEmpty == false else { return nil }
+
+        let lineData: Data
+        if let newlineIndex = data.firstIndex(of: 0x0A) {
+            var candidate = data.prefix(upTo: newlineIndex)
+            if candidate.last == 0x0D {
+                candidate = candidate.dropLast()
+            }
+            lineData = Data(candidate)
+        } else {
+            lineData = data
+        }
+
+        return String(decoding: lineData, as: UTF8.self)
+    }
+
+    private nonisolated static func writeAll(_ data: Data, to fd: Int32) -> Bool {
+        var bytesWritten = 0
+        return data.withUnsafeBytes { rawBuffer in
+            guard let rawBaseAddress = rawBuffer.baseAddress else { return false }
+
+            while bytesWritten < data.count {
+                let remaining = data.count - bytesWritten
+                let currentAddress = rawBaseAddress.advanced(by: bytesWritten)
+                let result = Darwin.write(fd, currentAddress, remaining)
+                if result > 0 {
+                    bytesWritten += result
+                } else if result < 0, errno == EINTR {
+                    continue
+                } else {
+                    return false
+                }
+            }
+
+            return true
+        }
+    }
+
+    private nonisolated static func setTimeout(fd: Int32, option: Int32, seconds: Int) {
+        var timeout = timeval(tv_sec: seconds, tv_usec: 0)
+        _ = withUnsafePointer(to: &timeout) { pointer in
+            setsockopt(fd, SOL_SOCKET, option, pointer, socklen_t(MemoryLayout<timeval>.size))
+        }
+    }
+
+    private nonisolated static func setNoSigPipe(fd: Int32) {
+        #if os(macOS)
+            var enabled: Int32 = 1
+            _ = withUnsafePointer(to: &enabled) { pointer in
+                setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size))
+            }
+        #endif
+    }
+
+    private nonisolated static func expandPath(_ path: String) -> String {
+        let expandedTilde = (path as NSString).expandingTildeInPath
+        let homeDirectory = NSHomeDirectory()
+        let expandedEnv = expandedTilde
+            .replacingOccurrences(of: "${HOME}", with: homeDirectory)
+            .replacingOccurrences(of: "$HOME", with: homeDirectory)
+        return URL(fileURLWithPath: expandedEnv).standardizedFileURL.path
     }
 }
 
@@ -429,7 +542,6 @@ final class CodexViewModel {
         ticketErrors[ticketID] = nil
         setTicketSending(true, for: ticketID)
 
-        // Yield once so SwiftUI can render the loading state before write completion.
         await Task.yield()
 
         do {
@@ -442,14 +554,13 @@ final class CodexViewModel {
             )
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
-        }
 
-        let elapsed = start.duration(to: clock.now)
-        if elapsed < minSpinnerDuration {
-            try? await Task.sleep(for: minSpinnerDuration - elapsed)
+            let elapsed = start.duration(to: clock.now)
+            if elapsed < minSpinnerDuration {
+                try? await Task.sleep(for: minSpinnerDuration - elapsed)
+            }
+            setTicketSending(false, for: ticketID)
         }
-
-        setTicketSending(false, for: ticketID)
     }
 
     func status(for projectID: UUID) -> CodexProjectStatus {
@@ -481,6 +592,14 @@ final class CodexViewModel {
 
         case let .ticketError(ticketID, message):
             ticketErrors[ticketID] = message
+
+        case let .ticketCompleted(ticketID, success, summary):
+            if success {
+                ticketErrors[ticketID] = nil
+            } else if let summary, summary.isEmpty == false {
+                ticketErrors[ticketID] = summary
+            }
+            setTicketSending(false, for: ticketID)
         }
     }
 

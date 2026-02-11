@@ -10,7 +10,8 @@ enum TicketOrdering {
         projectID: UUID,
         stateID: UUID? = nil
     ) throws -> Int64 {
-        let tickets = try fetchActiveScope(context: context, projectID: projectID, stateID: stateID)
+        let scopeStateIDs = stateID.map { Set([$0]) }
+        let tickets = try fetchActiveScope(context: context, projectID: projectID, scopeStateIDs: scopeStateIDs)
         let maxKey = tickets.map(\.orderKey).max() ?? 0
         return max(maxKey + keyStep, keyStep)
     }
@@ -19,7 +20,7 @@ enum TicketOrdering {
         context: ModelContext,
         ticketID: UUID,
         projectID: UUID,
-        stateID: UUID? = nil,
+        scopeStateIDs: Set<UUID>? = nil,
         beforeTicketID: UUID?,
         afterTicketID: UUID?
     ) throws {
@@ -31,10 +32,15 @@ enum TicketOrdering {
         }
 
         movedTicket.projectID = projectID
-        movedTicket.stateID = stateID
 
-        var scopeTickets = try fetchActiveScope(context: context, projectID: projectID, stateID: stateID)
+        var scopeTickets = try fetchActiveScope(context: context, projectID: projectID, scopeStateIDs: scopeStateIDs)
         if scopeTickets.contains(where: { $0.id == ticketID }) == false {
+            if let scopeStateIDs {
+                let movedStateID = movedTicket.stateID ?? TicketQuickStatus.backlog.stateID
+                guard scopeStateIDs.contains(movedStateID) else {
+                    return
+                }
+            }
             scopeTickets.append(movedTicket)
             scopeTickets.sort(by: sortByOrderKeyAndCreatedAt)
         }
@@ -63,7 +69,7 @@ enum TicketOrdering {
     private static func fetchActiveScope(
         context: ModelContext,
         projectID: UUID,
-        stateID: UUID?
+        scopeStateIDs: Set<UUID>?
     ) throws -> [Ticket] {
         let predicate = #Predicate<Ticket> { ticket in
             ticket.projectID == projectID &&
@@ -74,8 +80,12 @@ enum TicketOrdering {
             predicate: predicate,
             sortBy: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]
         )
-        return try context.fetch(descriptor).filter { ticket in
-            ticket.stateID == stateID
+        let activeProjectTickets = try context.fetch(descriptor)
+        guard let scopeStateIDs else {
+            return activeProjectTickets
+        }
+        return activeProjectTickets.filter { ticket in
+            scopeStateIDs.contains(ticket.stateID ?? TicketQuickStatus.backlog.stateID)
         }
     }
 

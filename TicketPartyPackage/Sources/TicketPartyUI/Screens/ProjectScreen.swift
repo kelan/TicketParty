@@ -12,8 +12,9 @@ struct ProjectDetailView: View {
     let onRequestNewTicket: (UUID?) -> Void
 
     @State private var selectedTicketID: UUID?
+    @State private var selectionAnchorTicketID: UUID?
     @State private var selectedSizeFilter: TicketSize?
-    @State private var selectedStateScope: TicketStateScope = .remaining
+    @State private var selectedStateScope: TicketStateScope = .all
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
@@ -31,19 +32,42 @@ struct ProjectDetailView: View {
         }
     }
 
-    private var filteredTickets: [Ticket] {
-        tickets.filter { ticket in
-            let sizeMatches = selectedSizeFilter == nil || ticket.size == selectedSizeFilter
-            let stateMatches = selectedStateScope.matches(ticket.quickStatus)
-            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
-            return sizeMatches && stateMatches && searchMatches
-        }
+    private var isSoftFilterActive: Bool {
+        selectedSizeFilter != nil || searchText.isEmpty == false
     }
 
-    private var isManualSortEnabled: Bool {
-        selectedSizeFilter == nil &&
-            selectedStateScope == .allStates &&
-            searchText.isEmpty
+    private var visibleTickets: [Ticket] {
+        let scopedTickets = tickets.filter { ticket in
+            selectedStateScope.matches(ticket.quickStatus)
+        }
+
+        let filteredTickets = scopedTickets.filter { ticket in
+            let sizeMatches = selectedSizeFilter == nil || ticket.size == selectedSizeFilter
+            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
+            return sizeMatches && searchMatches
+        }
+
+        return prioritizedTickets(in: filteredTickets) + backlogTickets(in: filteredTickets) + otherTickets(in: filteredTickets)
+    }
+
+    private var topPinnedTickets: [Ticket] {
+        prioritizedTickets(in: visibleTickets)
+    }
+
+    private var visibleBacklogTickets: [Ticket] {
+        backlogTickets(in: visibleTickets)
+    }
+
+    private var visibleOtherTickets: [Ticket] {
+        otherTickets(in: visibleTickets)
+    }
+
+    private var isBacklogReorderingEnabled: Bool {
+        isSoftFilterActive == false
+    }
+
+    private var backlogStateIDs: Set<UUID> {
+        [TicketQuickStatus.backlog.stateID, TicketQuickStatus.blocked.stateID]
     }
 
     private var selectedTicket: Ticket? {
@@ -58,14 +82,16 @@ struct ProjectDetailView: View {
     var body: some View {
         ProjectWorkspaceView(
             project: project,
-            filteredTickets: filteredTickets,
+            topPinnedTickets: topPinnedTickets,
+            backlogTickets: visibleBacklogTickets,
+            otherTickets: visibleOtherTickets,
             selectedTicketID: $selectedTicketID,
             selectedSizeFilter: $selectedSizeFilter,
             selectedStateScope: $selectedStateScope,
             searchText: $searchText,
             selectedTicket: selectedTicket,
-            isManualSortEnabled: isManualSortEnabled,
-            onMoveTickets: moveTickets
+            isBacklogReorderingEnabled: isBacklogReorderingEnabled,
+            onMoveBacklogTickets: moveBacklogTickets
         )
         .navigationTitle(project.name)
         .toolbar {
@@ -133,14 +159,39 @@ struct ProjectDetailView: View {
         }
         .onAppear {
             if selectedTicketID == nil {
-                selectedTicketID = filteredTickets.first?.id
+                selectedTicketID = visibleTickets.first?.id
+            }
+            if selectionAnchorTicketID == nil {
+                selectionAnchorTicketID = selectedTicketID
             }
         }
-        .onChange(of: filteredTickets.map(\.id)) { _, ids in
+        .onChange(of: selectedTicketID) { _, newID in
+            guard let newID else { return }
+            selectionAnchorTicketID = newID
+        }
+        .onChange(of: visibleTickets.map(\.id)) { _, ids in
+            guard ids.isEmpty == false else {
+                if isSoftFilterActive {
+                    selectedTicketID = nil
+                }
+                return
+            }
+
             if let selectedTicketID, ids.contains(selectedTicketID) {
                 return
             }
-            self.selectedTicketID = ids.first
+
+            if isSoftFilterActive {
+                self.selectedTicketID = ids.first
+                return
+            }
+
+            if let anchorID = selectionAnchorTicketID, ids.contains(anchorID) {
+                selectedTicketID = anchorID
+                return
+            }
+
+            selectedTicketID = ids.first
         }
     }
 
@@ -182,39 +233,39 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func moveTickets(from source: IndexSet, to destination: Int) {
-        guard isManualSortEnabled else { return }
+    private func moveBacklogTickets(from source: IndexSet, to destination: Int) {
+        guard isBacklogReorderingEnabled else { return }
         guard let movedSourceIndex = source.first else { return }
-        let movedTicketID = filteredTickets[movedSourceIndex].id
+        let movedTicketID = visibleBacklogTickets[movedSourceIndex].id
 
-        var reorderedIDs = filteredTickets.map(\.id)
+        var reorderedIDs = visibleBacklogTickets.map(\.id)
         reorderedIDs.move(fromOffsets: source, toOffset: destination)
 
-        persistMove(ticketID: movedTicketID, reorderedIDs: reorderedIDs)
+        persistBacklogMove(ticketID: movedTicketID, reorderedIDs: reorderedIDs)
     }
 
     private func moveSelectedTicket(by direction: Int) {
-        guard isManualSortEnabled else { return }
+        guard isBacklogReorderingEnabled else { return }
         guard let selectedTicketID else { return }
-        guard let currentIndex = filteredTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
+        guard let currentIndex = visibleBacklogTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
 
         let destination: Int
         if direction < 0 {
             guard currentIndex > 0 else { return }
             destination = currentIndex - 1
         } else if direction > 0 {
-            guard currentIndex < (filteredTickets.count - 1) else { return }
+            guard currentIndex < (visibleBacklogTickets.count - 1) else { return }
             destination = currentIndex + 2
         } else {
             return
         }
 
-        var reorderedIDs = filteredTickets.map(\.id)
+        var reorderedIDs = visibleBacklogTickets.map(\.id)
         reorderedIDs.move(fromOffsets: IndexSet(integer: currentIndex), toOffset: destination)
-        persistMove(ticketID: selectedTicketID, reorderedIDs: reorderedIDs)
+        persistBacklogMove(ticketID: selectedTicketID, reorderedIDs: reorderedIDs)
     }
 
-    private func persistMove(ticketID: UUID, reorderedIDs: [UUID]) {
+    private func persistBacklogMove(ticketID: UUID, reorderedIDs: [UUID]) {
         guard let movedIndex = reorderedIDs.firstIndex(of: ticketID) else { return }
         let beforeID = movedIndex > 0 ? reorderedIDs[movedIndex - 1] : nil
         let afterID = (movedIndex + 1) < reorderedIDs.count ? reorderedIDs[movedIndex + 1] : nil
@@ -224,7 +275,7 @@ struct ProjectDetailView: View {
                 context: modelContext,
                 ticketID: ticketID,
                 projectID: project.id,
-                stateID: nil,
+                scopeStateIDs: backlogStateIDs,
                 beforeTicketID: beforeID,
                 afterTicketID: afterID
             )
@@ -232,18 +283,54 @@ struct ProjectDetailView: View {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
     }
+
+    private func prioritizedTickets(in tickets: [Ticket]) -> [Ticket] {
+        tickets
+            .filter { $0.quickStatus.isPinnedTopStatus }
+            .sorted(by: sortByPinnedStatusThenOrderAndCreatedAt)
+    }
+
+    private func backlogTickets(in tickets: [Ticket]) -> [Ticket] {
+        tickets
+            .filter { $0.quickStatus.isBacklogSortable }
+            .sorted(by: sortByOrderKeyAndCreatedAt)
+    }
+
+    private func otherTickets(in tickets: [Ticket]) -> [Ticket] {
+        tickets
+            .filter { $0.quickStatus.isPinnedTopStatus == false && $0.quickStatus.isBacklogSortable == false }
+            .sorted(by: sortByOrderKeyAndCreatedAt)
+    }
+
+    private func sortByPinnedStatusThenOrderAndCreatedAt(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
+        let lhsRank = lhs.quickStatus.pinnedSortRank
+        let rhsRank = rhs.quickStatus.pinnedSortRank
+        if lhsRank != rhsRank {
+            return lhsRank < rhsRank
+        }
+        return sortByOrderKeyAndCreatedAt(lhs, rhs)
+    }
+
+    private func sortByOrderKeyAndCreatedAt(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
+        if lhs.orderKey == rhs.orderKey {
+            return lhs.createdAt < rhs.createdAt
+        }
+        return lhs.orderKey < rhs.orderKey
+    }
 }
 
 private struct ProjectWorkspaceView: View {
     let project: Project
-    let filteredTickets: [Ticket]
+    let topPinnedTickets: [Ticket]
+    let backlogTickets: [Ticket]
+    let otherTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
     @Binding var selectedSizeFilter: TicketSize?
     @Binding var selectedStateScope: TicketStateScope
     @Binding var searchText: String
     let selectedTicket: Ticket?
-    let isManualSortEnabled: Bool
-    let onMoveTickets: (IndexSet, Int) -> Void
+    let isBacklogReorderingEnabled: Bool
+    let onMoveBacklogTickets: (IndexSet, Int) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -257,29 +344,31 @@ private struct ProjectWorkspaceView: View {
             Divider()
 
             List(selection: $selectedTicketID) {
-                ForEach(filteredTickets, id: \.id) { ticket in
-                    HStack(alignment: .top, spacing: 8) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(ticket.title)
-                                .font(.headline)
-
-                            HStack(spacing: 8) {
-                                Text(ticket.displayID)
-                                Text(ticket.size.title)
-                                Text(ticket.severity.title)
-                            }
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                if topPinnedTickets.isEmpty == false {
+                    Section("Pinned") {
+                        ForEach(topPinnedTickets, id: \.id) { ticket in
+                            ticketRow(ticket)
                         }
-
-                        Spacer(minLength: 0)
-
-                        TicketStatusBadge(status: ticket.quickStatus)
                     }
-                    .padding(.vertical, 2)
-                    .moveDisabled(isManualSortEnabled == false)
                 }
-                .onMove(perform: onMoveTickets)
+
+                if backlogTickets.isEmpty == false {
+                    Section("Backlog") {
+                        ForEach(backlogTickets, id: \.id) { ticket in
+                            ticketRow(ticket)
+                                .moveDisabled(isBacklogReorderingEnabled == false)
+                        }
+                        .onMove(perform: onMoveBacklogTickets)
+                    }
+                }
+
+                if otherTickets.isEmpty == false {
+                    Section("Other") {
+                        ForEach(otherTickets, id: \.id) { ticket in
+                            ticketRow(ticket)
+                        }
+                    }
+                }
             }
             .frame(minWidth: 320, idealWidth: 380)
 
@@ -289,20 +378,43 @@ private struct ProjectWorkspaceView: View {
                 .frame(width: 280)
         }
         .overlay(alignment: .bottomLeading) {
-            if isManualSortEnabled == false {
-                Text("Clear filters, state scope, and search to manually reorder tickets.")
+            if isBacklogReorderingEnabled == false {
+                Text("Backlog reordering is disabled while size/search filters are active.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
             }
         }
     }
+
+    private func ticketRow(_ ticket: Ticket) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(ticket.title)
+                    .font(.headline)
+
+                HStack(spacing: 8) {
+                    Text(ticket.displayID)
+                    Text(ticket.size.title)
+                    Text(ticket.severity.title)
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+
+            TicketStatusBadge(status: ticket.quickStatus)
+        }
+        .padding(.vertical, 2)
+    }
 }
 
 private enum TicketStateScope: String, CaseIterable, Identifiable {
-    case allStates
-    case remaining
-    case available
+    case all
+    case backlog
+    case inProgress
+    case done
 
     var id: String {
         rawValue
@@ -310,23 +422,27 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .allStates:
+        case .all:
             return "All States"
-        case .remaining:
-            return "Remaining"
-        case .available:
-            return "Available"
+        case .backlog:
+            return "Backlog (incl. Blocked)"
+        case .inProgress:
+            return "In Progress"
+        case .done:
+            return "Done"
         }
     }
 
     func matches(_ status: TicketQuickStatus) -> Bool {
         switch self {
-        case .allStates:
+        case .all:
             return true
-        case .remaining:
-            return status != .done && status != .skipped && status != .duplicate
-        case .available:
-            return status == .backlog || status == .inProgress || status == .review
+        case .backlog:
+            return status.isBacklogSortable
+        case .inProgress:
+            return status == .inProgress
+        case .done:
+            return status == .done
         }
     }
 }
@@ -525,6 +641,25 @@ private struct TicketStatusBadge: View {
 }
 
 private extension TicketQuickStatus {
+    var isBacklogSortable: Bool {
+        self == .backlog || self == .blocked
+    }
+
+    var isPinnedTopStatus: Bool {
+        self == .inProgress || self == .done
+    }
+
+    var pinnedSortRank: Int {
+        switch self {
+        case .inProgress:
+            return 0
+        case .done:
+            return 1
+        default:
+            return 2
+        }
+    }
+
     var tintColor: Color {
         switch self {
         case .backlog:
