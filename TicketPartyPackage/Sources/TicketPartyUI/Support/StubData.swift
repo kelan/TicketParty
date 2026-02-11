@@ -15,6 +15,8 @@ enum StubTicketState: String, CaseIterable, Identifiable {
     case blocked
     case review
     case done
+    case skipped
+    case duplicate
 
     var id: String {
         rawValue
@@ -32,6 +34,10 @@ enum StubTicketState: String, CaseIterable, Identifiable {
             return "Review"
         case .done:
             return "Done"
+        case .skipped:
+            return "Skipped"
+        case .duplicate:
+            return "Duplicate"
         }
     }
 }
@@ -83,6 +89,10 @@ extension StubTicketState {
             return .review
         case .done:
             return .done
+        case .skipped:
+            return .skipped
+        case .duplicate:
+            return .duplicate
         }
     }
 }

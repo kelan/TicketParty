@@ -119,6 +119,13 @@ protocol CleanupExecutor: Sendable {
     func run(step: CleanupStep, context: CleanupContext) async throws -> CleanupStepResult
 }
 
+struct CleanupContext: Sendable {
+    let projectID: UUID
+    let ticketID: UUID
+    let ticketTitle: String
+    let ticketDescription: String
+}
+
 protocol LoopSnapshotStore: Sendable {
     func load(projectID: UUID) async throws -> LoopRunSnapshot?
     func save(_ snapshot: LoopRunSnapshot) async throws
@@ -175,6 +182,13 @@ Use configurable step list per project, with defaults:
 6. `runUnitTests`
 
 Each step should emit started/finished events and produce structured output for audit/debug.
+
+For commit steps (`commitImplementation`, `commitRefactor`), commit messages must include:
+
+1. Ticket title.
+2. Ticket description (or a concise summary derived from it).
+
+This ensures each cleanup commit carries enough ticket context when reviewing history.
 
 ## Integration Plan
 

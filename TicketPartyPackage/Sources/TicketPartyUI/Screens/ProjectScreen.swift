@@ -13,7 +13,7 @@ struct ProjectDetailView: View {
 
     @State private var selectedTicketID: UUID?
     @State private var selectedPriorityFilter: TicketPriority?
-    @State private var selectedStateScope: TicketStateScope = .allStates
+    @State private var selectedStateScope: TicketStateScope = .remaining
     @State private var showHighPriorityOnly = false
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
@@ -264,18 +264,23 @@ private struct ProjectWorkspaceView: View {
 
             List(selection: $selectedTicketID) {
                 ForEach(filteredTickets, id: \.id) { ticket in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(ticket.title)
-                            .font(.headline)
+                    HStack(alignment: .top, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(ticket.title)
+                                .font(.headline)
 
-                        HStack(spacing: 8) {
-                            Text(ticket.displayID)
-                            Text(ticket.quickStatus.title)
-                            Text(ticket.priority.title)
-                            Text(ticket.severity.title)
+                            HStack(spacing: 8) {
+                                Text(ticket.displayID)
+                                Text(ticket.priority.title)
+                                Text(ticket.severity.title)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                         }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+                        Spacer(minLength: 0)
+
+                        TicketStatusBadge(status: ticket.quickStatus)
                     }
                     .padding(.vertical, 2)
                     .moveDisabled(isManualSortEnabled == false)
@@ -325,7 +330,7 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
         case .allStates:
             return true
         case .remaining:
-            return status != .done
+            return status != .done && status != .skipped && status != .duplicate
         case .available:
             return status == .backlog || status == .inProgress || status == .review
         }
@@ -417,8 +422,9 @@ private struct ProjectTicketDetailPanel: View {
                             .disabled(isSending)
 
                             if isSending {
-                                ProgressView()
+                                ProgressView("Sending...")
                                     .controlSize(.small)
+                                    .font(.caption)
                             } else if let error = codexViewModel.ticketErrors[ticket.id], error.isEmpty == false {
                                 Circle()
                                     .fill(Color.red)
@@ -508,6 +514,25 @@ private struct TicketStatusQuickActions: View {
     }
 }
 
+private struct TicketStatusBadge: View {
+    let status: TicketQuickStatus
+
+    var body: some View {
+        Text(status.title)
+            .font(.caption.weight(.semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .foregroundStyle(status.tintColor)
+            .background(status.tintColor.opacity(0.24), in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(status.tintColor.opacity(0.9), lineWidth: 1)
+            }
+            .fixedSize(horizontal: true, vertical: true)
+    }
+}
+
 private extension TicketQuickStatus {
     var tintColor: Color {
         switch self {
@@ -521,6 +546,10 @@ private extension TicketQuickStatus {
             return .indigo
         case .done:
             return .green
+        case .skipped:
+            return .brown
+        case .duplicate:
+            return .mint
         }
     }
 }

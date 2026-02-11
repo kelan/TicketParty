@@ -378,6 +378,7 @@ actor CodexManager {
 final class CodexViewModel {
     private let manager: CodexManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
+    private let minSpinnerDuration: Duration = .seconds(1)
     private var eventTask: Task<Void, Never>?
     private var supervisorHealthTask: Task<Void, Never>?
 
@@ -418,12 +419,15 @@ final class CodexViewModel {
         let ticketID = ticket.id
         let title = ticket.title
         let description = ticket.ticketDescription
-        let minSpinnerDuration: Duration = .milliseconds(250)
         let clock = ContinuousClock()
         let start = clock.now
 
+        guard ticketIsSending[ticketID] != true else {
+            return
+        }
+
         ticketErrors[ticketID] = nil
-        ticketIsSending[ticketID] = true
+        setTicketSending(true, for: ticketID)
 
         // Yield once so SwiftUI can render the loading state before write completion.
         await Task.yield()
@@ -445,7 +449,7 @@ final class CodexViewModel {
             try? await Task.sleep(for: minSpinnerDuration - elapsed)
         }
 
-        ticketIsSending[ticketID] = false
+        setTicketSending(false, for: ticketID)
     }
 
     func status(for projectID: UUID) -> CodexProjectStatus {
@@ -478,5 +482,15 @@ final class CodexViewModel {
         case let .ticketError(ticketID, message):
             ticketErrors[ticketID] = message
         }
+    }
+
+    private func setTicketSending(_ isSending: Bool, for ticketID: UUID) {
+        var updated = ticketIsSending
+        if isSending {
+            updated[ticketID] = true
+        } else {
+            updated.removeValue(forKey: ticketID)
+        }
+        ticketIsSending = updated
     }
 }

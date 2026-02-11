@@ -8,6 +8,8 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
     case blocked
     case review
     case done
+    case skipped
+    case duplicate
 
     var id: String {
         rawValue
@@ -25,6 +27,10 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
             return "Review"
         case .done:
             return "Done"
+        case .skipped:
+            return "Skipped"
+        case .duplicate:
+            return "Duplicate"
         }
     }
 
@@ -40,6 +46,10 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
             return Self.statusReviewID
         case .done:
             return Self.statusDoneID
+        case .skipped:
+            return Self.statusSkippedID
+        case .duplicate:
+            return Self.statusDuplicateID
         }
     }
 
@@ -57,6 +67,8 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
     private static let statusBlockedID = Self.makeID("AA91174D-EAD8-41F6-AD2C-E6D950D8B5E3")
     private static let statusReviewID = Self.makeID("A81DC87E-B2FA-4A02-9783-B3AA647A36B4")
     private static let statusDoneID = Self.makeID("F9C0E777-D8EA-4542-8C3E-7BC2CF0A5CF5")
+    private static let statusSkippedID = Self.makeID("BAD4A862-631E-4A1A-AFCB-F1A2C33B7607")
+    private static let statusDuplicateID = Self.makeID("4EB8D67D-2A65-463D-9356-38AB280192B1")
 
     private static func makeID(_ value: String) -> UUID {
         guard let id = UUID(uuidString: value) else {
