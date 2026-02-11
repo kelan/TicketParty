@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Observation
+import SwiftData
 import TicketPartyDataStore
 
 enum CodexProjectStatus: Sendable, Equatable {
@@ -1064,6 +1065,7 @@ final class CodexViewModel {
     private let loopManager: TicketLoopManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
     private let transcriptStore: TicketTranscriptStore
+    private var modelContext: ModelContext?
     private let minSpinnerDuration: Duration = .seconds(1)
     private var eventTask: Task<Void, Never>?
     private var loopEventTask: Task<Void, Never>?
@@ -1228,6 +1230,10 @@ final class CodexViewModel {
         await loopManager.cancel(projectID: projectID)
     }
 
+    func configure(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+
     func status(for projectID: UUID) -> CodexProjectStatus {
         projectStatuses[projectID] ?? .stopped
     }
@@ -1322,6 +1328,7 @@ final class CodexViewModel {
 
         case let .ticketStarted(_, ticketID, _, _):
             setTicketSending(true, for: ticketID)
+            setTicketStatus(ticketID: ticketID, status: .inProgress)
 
         case let .ticketFinished(_, ticketID, success, message):
             if success {
@@ -1451,6 +1458,30 @@ final class CodexViewModel {
             updated.removeValue(forKey: ticketID)
         }
         ticketIsSending = updated
+    }
+
+    private func setTicketStatus(ticketID: UUID, status: TicketQuickStatus) {
+        guard let modelContext else { return }
+
+        do {
+            let descriptor = FetchDescriptor<Ticket>(
+                predicate: #Predicate<Ticket> { ticket in
+                    ticket.id == ticketID
+                }
+            )
+            guard let ticket = try modelContext.fetch(descriptor).first else {
+                return
+            }
+            guard ticket.quickStatus != status else {
+                return
+            }
+
+            ticket.quickStatus = status
+            ticket.updatedAt = .now
+            try modelContext.save()
+        } catch {
+            NSLog("Failed to update ticket status for loop task start: %@", error.localizedDescription)
+        }
     }
 
     private func resolveProjectWorkingDirectory(_ project: Project) throws -> String {
