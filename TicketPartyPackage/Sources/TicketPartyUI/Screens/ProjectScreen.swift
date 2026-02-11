@@ -365,6 +365,7 @@ private struct ProjectWorkspaceView: View {
                     Section("Recently Done") {
                         ForEach(recentDoneTickets, id: \.id) { ticket in
                             ticketRow(ticket)
+                                .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -417,6 +418,7 @@ private struct ProjectWorkspaceView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(ticket.title)
                     .font(.headline)
+                    .fontWeight(.medium)
 
                 HStack(spacing: 8) {
                     Text(ticket.displayID)
