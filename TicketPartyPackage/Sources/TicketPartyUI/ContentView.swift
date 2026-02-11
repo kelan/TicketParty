@@ -12,6 +12,7 @@ import TicketPartyDataStore
 public struct TicketPartyRootView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: [SortDescriptor(\Project.updatedAt, order: .reverse), SortDescriptor(\Project.name, order: .forward)]) private var projects: [Project]
+    @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse)]) private var tickets: [Ticket]
 
     @State private var selection: SidebarSelection? = .activity
     @State private var isPresentingCreateProject = false
@@ -41,11 +42,26 @@ public struct TicketPartyRootView: View {
                 Section {
                     ForEach(projects, id: \.id) { project in
                         NavigationLink(value: SidebarSelection.project(project.id)) {
+                            let sidebarStatus = sidebarStatus(for: project)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(project.name)
-                                    .font(.headline)
-                                Text(project.sidebarSubtitle)
-                                    .font(.caption)
+                                HStack(spacing: 6) {
+                                    Text(project.name)
+                                        .font(.headline)
+
+                                    if isSupervisorRunning(projectID: project.id) {
+                                        Circle()
+                                            .fill(.green)
+                                            .frame(width: 8, height: 8)
+                                            .accessibilityLabel("Supervisor is running")
+                                    }
+                                }
+
+                                Text("Updated \(sidebarStatus.lastUpdated, style: .relative)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+
+                                Text("\(sidebarStatus.inProgressCount) in progress / \(sidebarStatus.backlogCount) backlog")
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.vertical, 2)
@@ -191,6 +207,46 @@ public struct TicketPartyRootView: View {
         ticketDraft = TicketDraft(projectID: preferredProjectID ?? currentProjectID ?? projects.first?.id)
         isPresentingCreateTicket = true
     }
+
+    private func sidebarStatus(for project: Project) -> ProjectSidebarStatus {
+        var latestUpdate: Date?
+        var inProgressCount = 0
+        var backlogCount = 0
+
+        for ticket in tickets where ticket.projectID == project.id && ticket.archivedAt == nil {
+            latestUpdate = max(latestUpdate ?? ticket.updatedAt, ticket.updatedAt)
+
+            switch ticket.quickStatus {
+            case .inProgress, .review:
+                inProgressCount += 1
+            case .backlog, .blocked:
+                backlogCount += 1
+            case .done, .skipped, .duplicate:
+                break
+            }
+        }
+
+        let lastUpdated = max(project.updatedAt, latestUpdate ?? project.updatedAt)
+
+        return ProjectSidebarStatus(
+            lastUpdated: lastUpdated,
+            inProgressCount: inProgressCount,
+            backlogCount: backlogCount
+        )
+    }
+
+    private func isSupervisorRunning(projectID: UUID) -> Bool {
+        if case .running = codexViewModel.status(for: projectID) {
+            return true
+        }
+        return false
+    }
+}
+
+private struct ProjectSidebarStatus {
+    let lastUpdated: Date
+    let inProgressCount: Int
+    let backlogCount: Int
 }
 
 #Preview {
