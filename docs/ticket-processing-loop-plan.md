@@ -1,27 +1,37 @@
-# Ticket Processing Loop Plan
+# Ticket Processing Loop Playbook
 
 ## Goal
 
-Process tickets in strict sequence for a project:
+Run tickets in strict project order with reliable task completion semantics:
 
-1. Pick top ticket.
-2. Send to Codex and wait for terminal result.
-3. If successful, run cleanup pipeline.
-4. If cleanup succeeds, advance to next ticket.
-5. Stop on failure/cancel/pause with resumable state.
+1. App picks the top eligible ticket.
+2. App submits a single task (`codex.ticket`) to the agent runtime.
+3. Agent runtime owns execution until terminal (`task.completed` or `task.failed`).
+4. If ticket succeeds, app submits cleanup tasks one-by-one.
+5. If all cleanup succeeds, app advances to next ticket.
+6. On failure/cancel/pause, app stops advancing and preserves resumable state.
 
-## Why a New Manager
+## Core Ownership Model
 
-The current manager at `/Users/kelan/Projects/TicketParty/TicketPartyPackage/Sources/TicketPartyUI/Support/CodexManager.swift` supports one-off sends and output streaming, but not:
+### App owns loop driving logic
 
-- queue/run state,
-- ticket terminal completion tracking,
-- post-ticket cleanup orchestration,
-- resumable loop progress.
+1. Queue ordering and next-ticket selection.
+2. Loop state machine and snapshot persistence.
+3. Cleanup policy, step ordering, and advancement rules.
+4. Pause/resume/cancel user actions.
+5. UI state and observability.
 
-## State Model
+### Agent runtime (supervisor + sidecar/task executor) owns task completion
 
-Use explicit state enums instead of independent booleans.
+1. Once `submitTask` is accepted, runtime drives that task to terminal.
+2. Per-project worker lifecycle and single in-flight task per project.
+3. Event streaming + durable per-project event log.
+4. Replay from app cursor on reconnect.
+5. If app disconnects, runtime still finishes current task, then idles.
+
+This avoids split-brain ownership: app decides *what* runs next; runtime guarantees *submitted task* completion.
+
+## State Model (App)
 
 ```swift
 enum LoopRunState: Sendable, Equatable {
@@ -49,165 +59,114 @@ enum TicketPhase: Sendable, Equatable {
     case runningCleanup(step: CleanupStep, stepIndex: Int, totalSteps: Int)
     case markingDone
 }
-
-enum CleanupStep: String, Sendable, CaseIterable {
-    case commitImplementation
-    case requestRefactor
-    case applyRefactor
-    case commitRefactor
-    case verifyCleanWorktree
-    case runUnitTests
-}
 ```
 
-## Run Snapshot (Persistence)
+## Persistence
 
-Store a snapshot per active run so app restart can resume safely.
+### App persistence
 
-```swift
-struct LoopRunSnapshot: Codable, Sendable {
-    let runID: UUID
-    let projectID: UUID
-    let queuedTicketIDs: [UUID]
-    let completedTicketIDs: [UUID]
-    let failedTicketID: UUID?
-    let state: LoopRunState
-    let updatedAt: Date
-}
-```
+1. `LoopRunSnapshot` per project (JSON now; SwiftData later).
+2. Supervisor event cursor per project (`lastAckedEventID`).
+3. Step/task linkage (`runID`, `ticketID`, `cleanupStep`, `taskID`).
 
-Start with JSON file persistence, then move into SwiftData model later.
+### Runtime persistence
 
-## Manager Shape
+1. Task records per project.
+2. Event log (`eventID` monotonic per project).
+3. Project log metadata (`nextEventID`, `lastAckedEventID`).
+4. Retention defaults: 7 days or 10 MB per project.
 
-Create `TicketLoopManager` actor with one active run per project.
+## Protocol Contract (Unix socket JSON)
 
-```swift
-actor TicketLoopManager {
-    enum Event: Sendable {
-        case stateChanged(projectID: UUID, state: LoopRunState)
-        case ticketStarted(projectID: UUID, ticketID: UUID, index: Int, total: Int)
-        case ticketFinished(projectID: UUID, ticketID: UUID, result: TicketResult)
-        case cleanupStepStarted(projectID: UUID, ticketID: UUID, step: CleanupStep)
-        case cleanupStepFinished(projectID: UUID, ticketID: UUID, step: CleanupStep, success: Bool, message: String?)
-    }
+### Commands
 
-    func start(projectID: UUID) async throws
-    func pause(projectID: UUID) async
-    func resume(projectID: UUID) async throws
-    func cancel(projectID: UUID) async
-    func state(projectID: UUID) -> LoopRunState
-}
-```
+1. `hello`
+2. `submitTask { projectID, taskID, kind, ticketID, workingDirectory, prompt, payload, idempotencyKey }`
+3. `subscribe { projectID, fromEventID }`
+4. `ack { projectID, upToEventID }`
+5. `taskStatus { projectID?, taskID? }`
+6. `cancelTask { projectID, taskID }`
+7. `listActiveTasks`
 
-Keep orchestration in this actor only. UI reads events through `AsyncStream`, similar to existing `CodexManager`.
+### Events
 
-## Dependency Protocols
+1. `task.accepted`
+2. `task.output`
+3. `task.completed`
+4. `task.failed`
+5. worker events (`worker.started`, `worker.exited`)
 
-Use protocol seams so manager is testable and not tied to UI.
+### Ordering and replay
 
-```swift
-protocol TicketQueueProvider: Sendable {
-    func topOpenTickets(projectID: UUID) async throws -> [TicketLoopItem]
-}
+1. Event IDs are monotonic per project.
+2. App subscribes with `fromEventID = lastAckedEventID + 1`.
+3. App ACKs processed high-watermark events.
+4. On reconnect/restart, app rebuilds state from replay + `taskStatus`.
 
-protocol CodexTicketExecutor: Sendable {
-    func execute(ticket: TicketLoopItem, project: LoopProjectContext) async throws -> CodexExecutionResult
-}
+## Task Kinds and Cleanup Pipeline
 
-protocol CleanupExecutor: Sendable {
-    func run(step: CleanupStep, context: CleanupContext) async throws -> CleanupStepResult
-}
+### Ticket task
 
-struct CleanupContext: Sendable {
-    let projectID: UUID
-    let ticketID: UUID
-    let ticketTitle: String
-    let ticketDescription: String
-}
+1. `codex.ticket`
 
-protocol LoopSnapshotStore: Sendable {
-    func load(projectID: UUID) async throws -> LoopRunSnapshot?
-    func save(_ snapshot: LoopRunSnapshot) async throws
-    func clear(projectID: UUID) async throws
-}
-```
+### Cleanup tasks (default order)
 
-`CodexManager` should be adapted behind `CodexTicketExecutor` so loop logic stays independent from sidecar details.
+1. `cleanup.commitImplementation`
+2. `cleanup.requestRefactor`
+3. `cleanup.applyRefactor`
+4. `cleanup.commitRefactor`
+5. `cleanup.verifyCleanWorktree`
+6. `cleanup.runUnitTests`
 
-## Control Flow
+### Commit requirements
 
-Pseudo-flow for `start(projectID:)`:
-
-1. Guard no active run for project.
-2. Query ordered open tickets.
-3. Build run snapshot (`preparingQueue` -> `running`).
-4. For each ticket in order:
-   1. set phase `.sendingToCodex`, send to Codex.
-   2. set phase `.awaitingCodexResult`, await terminal result.
-   3. if Codex failed: mark run failed and stop.
-   4. run cleanup steps in configured order.
-   5. if any cleanup step failed: mark run failed and stop.
-   6. mark ticket complete, append to completed list, persist snapshot.
-5. mark run completed and clear active snapshot.
-
-## Terminal Result Requirement
-
-Sequential behavior requires a terminal completion signal from Codex sidecar.
-
-Current output lines alone are insufficient. Add a structured terminal event in sidecar protocol, for example:
-
-```json
-{"type":"ticket.completed","threadId":"<uuid>","success":true,"summary":"..."}
-```
-
-Without this, manager cannot reliably know when to run cleanup and advance.
-
-## Failure Policy
-
-- Codex failure: stop loop, keep run snapshot, require manual resume/retry.
-- Cleanup failure: stop loop, keep failed step context.
-- Cancel: cooperative cancellation; current step should finish or check cancellation boundaries.
-- Pause: set pause intent and stop before next major phase boundary.
-
-## Cleanup Pipeline Defaults
-
-Use configurable step list per project, with defaults:
-
-1. `commitImplementation`
-2. `requestRefactor`
-3. `applyRefactor`
-4. `commitRefactor`
-5. `verifyCleanWorktree`
-6. `runUnitTests`
-
-Each step should emit started/finished events and produce structured output for audit/debug.
-
-For commit steps (`commitImplementation`, `commitRefactor`), commit messages must include:
+Commit cleanup steps must include ticket context in payload and resulting commit message:
 
 1. Ticket title.
-2. Ticket description (or a concise summary derived from it).
+2. Ticket description (or concise summary).
+3. `Agent: Codex` trailer when configured.
 
-This ensures each cleanup commit carries enough ticket context when reviewing history.
+## Idempotency and Determinism
 
-## Integration Plan
+1. Every logical step uses a deterministic `idempotencyKey`:
+   - `run:{runID}:ticket:{ticketID}:step:codex`
+   - `run:{runID}:ticket:{ticketID}:step:{cleanupStep}`
+2. Retries reuse same key.
+3. Runtime deduplicates duplicate submissions and returns existing `taskID`.
 
-1. Add `TicketLoopManager` actor in `TicketPartyUI/Support`.
-2. Add protocol adapters:
-   - SwiftData-backed `TicketQueueProvider` using existing order keys.
-   - `CodexManager` adapter for execution and terminal results.
-   - shell-backed `CleanupExecutor` for git/test steps.
-3. Add loop view model (`@MainActor`) for UI state binding.
-4. Add project-level "Run Loop / Pause / Resume / Cancel" controls.
-5. Persist snapshots so interrupted loops can resume.
+## Execution Flow
 
-## Testing Strategy
+1. App starts loop, snapshots queue, sets `preparingQueue`.
+2. For current ticket, app submits `codex.ticket`.
+3. Runtime executes task to terminal and emits events.
+4. App waits for terminal event; if failed, mark loop failed and stop.
+5. If successful, app submits cleanup steps serially.
+6. On cleanup failure, mark loop failed and stop.
+7. On all-success, mark ticket complete, persist snapshot, advance index.
+8. When queue exhausted, mark loop completed and clear snapshot.
 
-Focus on unit tests (no UI tests):
+## Failure, Pause, Cancel, Resume
 
-1. happy path: 3 tickets, all cleanup steps pass -> completed.
-2. Codex failure on ticket N -> run failed, N+1 not started.
-3. cleanup failure on step K -> run failed with step context.
-4. pause between tickets -> paused state and resumable index.
-5. cancel during cleanup -> cancellation state and no next ticket.
-6. restart from snapshot -> resumes at expected ticket/phase.
+1. Task failure: loop transitions to `.failed` with step context.
+2. Pause: app sets intent and stops before next phase boundary.
+3. Cancel: app sends `cancelTask` for active task and transitions through `.cancelling`.
+4. App crash/restart: reload snapshot + replay events + continue from last durable point.
+5. Runtime restart: app reconnects, re-subscribes, and rebuilds in-memory state.
+
+## Current Implementation Alignment
+
+Implemented in repo:
+
+1. App `TicketLoopManager` owns orchestration and snapshots.
+2. `CodexManager` supports generic submit/wait/cancel task flow.
+3. Runtime handles task protocol, durable events, and cleanup task execution.
+4. Agents page shows supervisor health + loop state and actions.
+5. Unit tests cover loop happy path, cleanup failure path, and commit payload context.
+
+## Remaining Hardening (Next)
+
+1. Add explicit `task.progress` phases for richer UI.
+2. Add retention/replay truncation signaling (`replay.truncated`) handling end-to-end.
+3. Move loop snapshots from JSON to SwiftData model.
+4. Add deeper recovery tests for app/runtime restart mid-step.
+5. Add stricter timeout and cooperative cancellation policies per task kind.
