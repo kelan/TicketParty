@@ -233,7 +233,7 @@ public struct TicketPartyRootView: View {
             switch ticket.quickStatus {
             case .inProgress, .review:
                 inProgressCount += 1
-            case .backlog, .blocked:
+            case .backlog, .needsThinking, .readyToImplement, .blocked:
                 backlogCount += 1
             case .done, .skipped, .duplicate:
                 break

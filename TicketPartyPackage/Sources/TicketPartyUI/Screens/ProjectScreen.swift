@@ -97,7 +97,12 @@ struct ProjectDetailView: View {
     }
 
     private var backlogStateIDs: Set<UUID> {
-        [TicketQuickStatus.backlog.stateID, TicketQuickStatus.blocked.stateID]
+        [
+            TicketQuickStatus.backlog.stateID,
+            TicketQuickStatus.needsThinking.stateID,
+            TicketQuickStatus.readyToImplement.stateID,
+            TicketQuickStatus.blocked.stateID,
+        ]
     }
 
     private var selectedTicket: Ticket? {
@@ -789,13 +794,20 @@ private struct TicketStatusBadge: View {
 private extension TicketQuickStatus {
 
     var isBacklogSortable: Bool {
-        self == .backlog || self == .blocked
+        self == .backlog ||
+            self == .needsThinking ||
+            self == .readyToImplement ||
+            self == .blocked
     }
 
     var tintColor: Color {
         switch self {
         case .backlog:
             return .gray
+        case .needsThinking:
+            return .purple
+        case .readyToImplement:
+            return .cyan
         case .inProgress:
             return .blue
         case .blocked:

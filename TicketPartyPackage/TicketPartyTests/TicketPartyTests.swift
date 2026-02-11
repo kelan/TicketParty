@@ -164,6 +164,27 @@ struct TicketPartyTests {
     }
 
     @Test
+    func quickStatus_newPlanningStatesAreActiveAndClearDoneTimestamp() {
+        let doneAt = Date(timeIntervalSince1970: 1_234_567)
+        let ticket = Ticket(
+            ticketNumber: 3,
+            displayID: "TT-3",
+            title: "Planning state behavior",
+            description: "Ensure planning states are non-terminal",
+            stateID: TicketQuickStatus.done.stateID,
+            doneAt: doneAt
+        )
+
+        ticket.quickStatus = .needsThinking
+        #expect(ticket.quickStatus.isDone == false)
+        #expect(ticket.doneAt == nil)
+
+        ticket.quickStatus = .readyToImplement
+        #expect(ticket.quickStatus.isDone == false)
+        #expect(ticket.doneAt == nil)
+    }
+
+    @Test
     @MainActor
     func codexViewModel_streamEvents_persistTranscriptLifecycle() async throws {
         _ = try TestEnvironment()

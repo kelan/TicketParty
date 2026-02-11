@@ -11,6 +11,8 @@ struct StubProject: Identifiable, Hashable {
 
 enum StubTicketState: String, CaseIterable, Identifiable {
     case backlog
+    case needsThinking
+    case readyToImplement
     case inProgress
     case blocked
     case review
@@ -26,6 +28,10 @@ enum StubTicketState: String, CaseIterable, Identifiable {
         switch self {
         case .backlog:
             return "Backlog"
+        case .needsThinking:
+            return "Needs Thinking"
+        case .readyToImplement:
+            return "Ready to Implement"
         case .inProgress:
             return "In Progress"
         case .blocked:
@@ -82,6 +88,10 @@ extension StubTicketState {
         switch self {
         case .backlog:
             return .backlog
+        case .needsThinking:
+            return .needsThinking
+        case .readyToImplement:
+            return .readyToImplement
         case .inProgress:
             return .inProgress
         case .blocked:
@@ -170,10 +180,10 @@ enum SampleData {
             StubTicket(
                 id: "2",
                 title: "Revise pricing page copy",
-                state: .inProgress,
+                state: .readyToImplement,
                 size: .straightforwardFeature,
                 assignee: "Avery",
-                latestNote: "Legal language updates still pending."
+                latestNote: "Requirements are clear and implementation is queued."
             ),
             StubTicket(
                 id: "3",
@@ -186,10 +196,10 @@ enum SampleData {
             StubTicket(
                 id: "4",
                 title: "New referral CTA",
-                state: .backlog,
+                state: .needsThinking,
                 size: .quickTweak,
                 assignee: "Riley",
-                latestNote: "Pending design exploration."
+                latestNote: "Needs product and design exploration before implementation."
             ),
         ]
 

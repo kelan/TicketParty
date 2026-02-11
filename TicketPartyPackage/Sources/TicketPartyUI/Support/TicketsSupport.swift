@@ -4,6 +4,8 @@ import TicketPartyModels
 
 enum TicketQuickStatus: String, CaseIterable, Identifiable {
     case backlog
+    case needsThinking
+    case readyToImplement
     case inProgress
     case blocked
     case review
@@ -19,6 +21,10 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
         switch self {
         case .backlog:
             return "Backlog"
+        case .needsThinking:
+            return "Needs Thinking"
+        case .readyToImplement:
+            return "Ready to Implement"
         case .inProgress:
             return "In Progress"
         case .blocked:
@@ -38,6 +44,10 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
         switch self {
         case .backlog:
             return Self.statusBacklogID
+        case .needsThinking:
+            return Self.statusNeedsThinkingID
+        case .readyToImplement:
+            return Self.statusReadyToImplementID
         case .inProgress:
             return Self.statusInProgressID
         case .blocked:
@@ -57,7 +67,7 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
         switch self {
         case .done, .skipped, .duplicate:
             true
-        case .inProgress, .review, .backlog, .blocked:
+        case .inProgress, .review, .backlog, .blocked, .needsThinking, .readyToImplement:
             false
         }
     }
@@ -72,6 +82,8 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
     }
 
     private static let statusBacklogID = Self.makeID("6D9887A9-A3BA-4F77-9C97-6BC9AFA17C1D")
+    private static let statusNeedsThinkingID = Self.makeID("990C756C-2492-435F-A75D-7CFECC34C324")
+    private static let statusReadyToImplementID = Self.makeID("BD2638C9-DF9B-488F-ADF8-656B42B12D3D")
     private static let statusInProgressID = Self.makeID("B47B66F8-A6A8-4C1E-B8F7-D8DDE826D212")
     private static let statusBlockedID = Self.makeID("AA91174D-EAD8-41F6-AD2C-E6D950D8B5E3")
     private static let statusReviewID = Self.makeID("A81DC87E-B2FA-4A02-9783-B3AA647A36B4")
