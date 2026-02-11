@@ -27,7 +27,7 @@ public struct TicketPartyRootView: View {
             List(selection: $selection) {
                 Section {
                     NavigationLink(value: SidebarSelection.activity) {
-                        Label("Activity", systemImage: "clock.arrow.circlepath")
+                        SidebarActivityStatusLabel(status: codexViewModel.supervisorHealth)
                     }
 
                     NavigationLink(value: SidebarSelection.allProjects) {
@@ -85,9 +85,6 @@ public struct TicketPartyRootView: View {
                     }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                SidebarSupervisorFooter(status: codexViewModel.supervisorHealth)
-            }
             .navigationTitle("TicketParty")
             #if os(macOS)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 230)
@@ -95,7 +92,7 @@ public struct TicketPartyRootView: View {
         } detail: {
             switch selection ?? .activity {
             case .activity:
-                ActivityView()
+                ActivityView(projects: projects, tickets: tickets)
 
             case .allProjects:
                 OverallKanbanView(projects: projects)
@@ -302,25 +299,28 @@ private struct ProjectSidebarStatus {
     let backlogCount: Int
 }
 
-private struct SidebarSupervisorFooter: View {
+private struct SidebarActivityStatusLabel: View {
     let status: CodexSupervisorHealthStatus
 
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 8, height: 8)
-
-            Text(statusTitle)
-                .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Activity", systemImage: "clock.arrow.circlepath")
                 .lineLimit(1)
 
-            Spacer(minLength: 0)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
+
+                Text(statusTitle)
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(statusColor)
         }
-        .foregroundStyle(.primary)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(.thinMaterial)
+        .padding(.vertical, 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(status.title)
         .help(status.detail)
