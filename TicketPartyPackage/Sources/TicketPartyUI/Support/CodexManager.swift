@@ -382,6 +382,7 @@ final class CodexViewModel {
     var projectStatuses: [UUID: CodexProjectStatus] = [:]
     var ticketOutput: [UUID: String] = [:]
     var ticketErrors: [UUID: String] = [:]
+    var ticketIsSending: [UUID: Bool] = [:]
 
     init(manager: CodexManager = CodexManager()) {
         self.manager = manager
@@ -401,8 +402,15 @@ final class CodexViewModel {
         let ticketID = ticket.id
         let title = ticket.title
         let description = ticket.ticketDescription
+        let minSpinnerDuration: Duration = .milliseconds(250)
+        let clock = ContinuousClock()
+        let start = clock.now
 
         ticketErrors[ticketID] = nil
+        ticketIsSending[ticketID] = true
+
+        // Yield once so SwiftUI can render the loading state before write completion.
+        await Task.yield()
 
         do {
             try await manager.sendTicket(
@@ -415,6 +423,13 @@ final class CodexViewModel {
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
         }
+
+        let elapsed = start.duration(to: clock.now)
+        if elapsed < minSpinnerDuration {
+            try? await Task.sleep(for: minSpinnerDuration - elapsed)
+        }
+
+        ticketIsSending[ticketID] = false
     }
 
     func status(for projectID: UUID) -> CodexProjectStatus {

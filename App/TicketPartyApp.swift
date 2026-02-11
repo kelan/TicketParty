@@ -35,6 +35,11 @@ struct TicketPartyApp: App {
             }
 
             CommandMenu("Tickets") {
+                Button("Edit Selected Ticket") {
+                    NotificationCenter.default.post(name: .ticketPartyEditSelectedTicketRequested, object: nil)
+                }
+                .keyboardShortcut("e")
+
                 Button("Move Selected Ticket Up") {
                     NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketUpRequested, object: nil)
                 }

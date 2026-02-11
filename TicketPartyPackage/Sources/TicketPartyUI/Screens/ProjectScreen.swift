@@ -126,6 +126,9 @@ struct ProjectDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketDownRequested)) { _ in
             moveSelectedTicket(by: 1)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyEditSelectedTicketRequested)) { _ in
+            requestEditSelectedTicket()
+        }
         .onAppear {
             if selectedTicketID == nil {
                 selectedTicketID = filteredTickets.first?.id
@@ -151,6 +154,11 @@ struct ProjectDetailView: View {
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
+    }
+
+    private func requestEditSelectedTicket() {
+        guard let selectedTicket else { return }
+        ticketEditSession = TicketEditSession(id: selectedTicket.id)
     }
 
     private func applyTicketEdits(ticketID: UUID, draft: TicketDraft) {
@@ -340,9 +348,22 @@ private struct ProjectTicketDetailPanel: View {
                     }
 
                     Section("Codex") {
-                        Button("Send to Codex") {
-                            Task {
-                                await codexViewModel.send(ticket: ticket, project: project)
+                        let isSending = codexViewModel.ticketIsSending[ticket.id] == true
+                        HStack(spacing: 8) {
+                            Button("Send to Codex") {
+                                Task {
+                                    await codexViewModel.send(ticket: ticket, project: project)
+                                }
+                            }
+                            .disabled(isSending)
+
+                            if isSending {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else if let error = codexViewModel.ticketErrors[ticket.id], error.isEmpty == false {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 8, height: 8)
                             }
                         }
 
