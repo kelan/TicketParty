@@ -377,21 +377,37 @@ actor CodexManager {
 @Observable
 final class CodexViewModel {
     private let manager: CodexManager
+    private let supervisorHealthChecker: CodexSupervisorHealthChecker
     private var eventTask: Task<Void, Never>?
+    private var supervisorHealthTask: Task<Void, Never>?
 
     var projectStatuses: [UUID: CodexProjectStatus] = [:]
     var ticketOutput: [UUID: String] = [:]
     var ticketErrors: [UUID: String] = [:]
     var ticketIsSending: [UUID: Bool] = [:]
+    var supervisorHealth: CodexSupervisorHealthStatus = .notRunning
 
-    init(manager: CodexManager = CodexManager()) {
+    init(
+        manager: CodexManager = CodexManager(),
+        supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker()
+    ) {
         self.manager = manager
+        self.supervisorHealthChecker = supervisorHealthChecker
         eventTask = Task { [manager, weak self] in
             for await event in manager.events {
                 guard let self else { return }
                 await MainActor.run {
                     self.consume(event)
                 }
+            }
+        }
+
+        supervisorHealthTask = Task { [weak self] in
+            guard let self else { return }
+            await self.refreshSupervisorHealth()
+            while Task.isCancelled == false {
+                try? await Task.sleep(for: .seconds(5))
+                await self.refreshSupervisorHealth()
             }
         }
     }
@@ -438,6 +454,10 @@ final class CodexViewModel {
 
     func output(for ticketID: UUID) -> String {
         ticketOutput[ticketID, default: ""]
+    }
+
+    func refreshSupervisorHealth() async {
+        supervisorHealth = await supervisorHealthChecker.check()
     }
 
     private func consume(_ event: CodexManager.Event) {

@@ -2,6 +2,77 @@ import Foundation
 import TicketPartyDataStore
 import TicketPartyModels
 
+enum TicketQuickStatus: String, CaseIterable, Identifiable {
+    case backlog
+    case inProgress
+    case blocked
+    case review
+    case done
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .backlog:
+            return "Backlog"
+        case .inProgress:
+            return "In Progress"
+        case .blocked:
+            return "Blocked"
+        case .review:
+            return "Review"
+        case .done:
+            return "Done"
+        }
+    }
+
+    var stateID: UUID {
+        switch self {
+        case .backlog:
+            return Self.statusBacklogID
+        case .inProgress:
+            return Self.statusInProgressID
+        case .blocked:
+            return Self.statusBlockedID
+        case .review:
+            return Self.statusReviewID
+        case .done:
+            return Self.statusDoneID
+        }
+    }
+
+    init(stateID: UUID?) {
+        guard let stateID else {
+            self = .backlog
+            return
+        }
+
+        self = Self.allCases.first(where: { $0.stateID == stateID }) ?? .backlog
+    }
+
+    private static let statusBacklogID = Self.makeID("6D9887A9-A3BA-4F77-9C97-6BC9AFA17C1D")
+    private static let statusInProgressID = Self.makeID("B47B66F8-A6A8-4C1E-B8F7-D8DDE826D212")
+    private static let statusBlockedID = Self.makeID("AA91174D-EAD8-41F6-AD2C-E6D950D8B5E3")
+    private static let statusReviewID = Self.makeID("A81DC87E-B2FA-4A02-9783-B3AA647A36B4")
+    private static let statusDoneID = Self.makeID("F9C0E777-D8EA-4542-8C3E-7BC2CF0A5CF5")
+
+    private static func makeID(_ value: String) -> UUID {
+        guard let id = UUID(uuidString: value) else {
+            preconditionFailure("Invalid status UUID: \(value)")
+        }
+        return id
+    }
+}
+
+extension Ticket {
+    var quickStatus: TicketQuickStatus {
+        get { TicketQuickStatus(stateID: stateID) }
+        set { stateID = newValue.stateID }
+    }
+}
+
 struct TicketDraft: Equatable {
     var projectID: UUID?
     var title: String = ""

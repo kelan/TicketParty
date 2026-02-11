@@ -34,7 +34,7 @@ public struct TicketPartyRootView: View {
                     }
 
                     NavigationLink(value: SidebarSelection.codex) {
-                        Label("Codex", systemImage: "terminal")
+                        Label("Agents", systemImage: "terminal")
                     }
                 }
 
@@ -167,6 +167,7 @@ public struct TicketPartyRootView: View {
             description: normalizedDraft.description,
             priority: normalizedDraft.priority,
             severity: normalizedDraft.severity,
+            stateID: TicketQuickStatus.backlog.stateID,
             createdAt: .now,
             updatedAt: .now
         )
@@ -231,7 +232,8 @@ public struct TicketPartyRootView: View {
                         title: ticket.title,
                         description: ticket.latestNote,
                         priority: ticket.priority.ticketPriority,
-                        severity: ticket.priority.ticketSeverity
+                        severity: ticket.priority.ticketSeverity,
+                        stateID: ticket.state.ticketQuickStatus.stateID
                     )
                 )
                 ticketNumber += 1

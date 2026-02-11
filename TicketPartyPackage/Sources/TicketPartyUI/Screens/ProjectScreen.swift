@@ -262,6 +262,7 @@ private struct ProjectWorkspaceView: View {
 
                         HStack(spacing: 8) {
                             Text(ticket.displayID)
+                            Text(ticket.quickStatus.title)
                             Text(ticket.priority.title)
                             Text(ticket.severity.title)
                         }
@@ -331,6 +332,16 @@ private struct ProjectTicketDetailPanel: View {
                 Form {
                     Section("Ticket") {
                         LabeledContent("ID", value: ticket.displayID)
+                    }
+
+                    Section("Status") {
+                        LabeledContent("Current", value: ticket.quickStatus.title)
+
+                        TicketStatusQuickActions(currentStatus: ticket.quickStatus) { status in
+                            guard status != ticket.quickStatus else { return }
+                            ticket.quickStatus = status
+                            persist(ticket: ticket)
+                        }
                     }
 
                     Section("Details") {
@@ -415,6 +426,52 @@ private struct ProjectTicketDetailPanel: View {
             try modelContext.save()
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+}
+
+private struct TicketStatusQuickActions: View {
+    let currentStatus: TicketQuickStatus
+    let onSelect: (TicketQuickStatus) -> Void
+
+    private let columns = [GridItem(.adaptive(minimum: 100), spacing: 8)]
+
+    var body: some View {
+        LazyVGrid(columns: columns, alignment: .leading, spacing: 8) {
+            ForEach(TicketQuickStatus.allCases) { status in
+                Button(status.title) {
+                    onSelect(status)
+                }
+                .buttonStyle(.plain)
+                .font(.caption.weight(status == currentStatus ? .semibold : .regular))
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .foregroundStyle(status.tintColor)
+                .background(status.tintColor.opacity(status == currentStatus ? 0.24 : 0.12), in: Capsule())
+                .overlay {
+                    Capsule()
+                        .stroke(status.tintColor.opacity(status == currentStatus ? 0.9 : 0.5), lineWidth: 1)
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+}
+
+private extension TicketQuickStatus {
+    var tintColor: Color {
+        switch self {
+        case .backlog:
+            return .gray
+        case .inProgress:
+            return .blue
+        case .blocked:
+            return .orange
+        case .review:
+            return .indigo
+        case .done:
+            return .green
         }
     }
 }
@@ -549,7 +606,8 @@ private enum ProjectPreviewData {
                 title: ticket.title,
                 description: ticket.latestNote,
                 priority: ticket.priority.ticketPriority,
-                severity: ticket.priority.ticketSeverity
+                severity: ticket.priority.ticketSeverity,
+                stateID: ticket.state.ticketQuickStatus.stateID
             )
         }
 

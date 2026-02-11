@@ -70,6 +70,23 @@ extension StubPriority {
     }
 }
 
+extension StubTicketState {
+    var ticketQuickStatus: TicketQuickStatus {
+        switch self {
+        case .backlog:
+            return .backlog
+        case .inProgress:
+            return .inProgress
+        case .blocked:
+            return .blocked
+        case .review:
+            return .review
+        case .done:
+            return .done
+        }
+    }
+}
+
 struct StubTicket: Identifiable, Hashable {
     let id: String
     let title: String

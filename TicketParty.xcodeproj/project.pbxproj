@@ -82,11 +82,6 @@
 			path = TicketPartyPackage;
 			sourceTree = "<group>";
 		};
-		764109EB2F3C4C670008EB12 /* New Folder */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "New Folder";
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -125,7 +120,6 @@
 				764105432F3B90520008EB12 /* Justfile */,
 				7641053E2F3B90520008EB12 /* config */,
 				764105C82F3BBCB30008EB12 /* App */,
-				764109EB2F3C4C670008EB12 /* New Folder */,
 				7641060C2F3BC4D20008EB12 /* TicketPartyPackage */,
 				764105192F3B17B10008EB12 /* UITests */,
 				7641054F2F3B918A0008EB12 /* xcconfig */,
