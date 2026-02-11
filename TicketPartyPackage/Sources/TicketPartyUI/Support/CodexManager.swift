@@ -32,6 +32,7 @@ actor CodexManager {
     enum ManagerError: LocalizedError {
         case missingWorkingDirectory
         case invalidWorkingDirectory(String)
+        case missingNodeBinary
         case missingSidecarScript(String)
         case sidecarLaunchFailed(String)
         case stdinUnavailable
@@ -43,6 +44,8 @@ actor CodexManager {
                 return "Project working directory is required before sending to Codex."
             case let .invalidWorkingDirectory(path):
                 return "Project working directory is invalid: \(path)"
+            case .missingNodeBinary:
+                return "Node.js executable not found. Install Node or set NODE_BINARY."
             case let .missingSidecarScript(path):
                 return "Codex sidecar script not found: \(path)"
             case let .sidecarLaunchFailed(message):
@@ -88,7 +91,7 @@ actor CodexManager {
     private var lineBuffers: [UUID: LineBuffer] = [:]
 
     init(
-        sidecarScriptPath: String = "~/dev/codex-sidecar/sidecar.mjs",
+        sidecarScriptPath: String = "/Users/kelan/dev/codex-sidecar/sidecar.mjs",
         fileManager: FileManager = .default
     ) {
         var streamContinuation: AsyncStream<Event>.Continuation?
@@ -155,12 +158,13 @@ actor CodexManager {
         }
 
         let sidecarScript = try resolveSidecarScriptPath()
+        let nodeExecutable = try resolveNodeExecutablePath()
 
         setStatus(.starting, for: projectID)
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["node", sidecarScript]
+        process.executableURL = URL(fileURLWithPath: nodeExecutable)
+        process.arguments = [sidecarScript]
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
 
         let stdinPipe = Pipe()
@@ -258,7 +262,12 @@ actor CodexManager {
         if statusCode == 0 {
             setStatus(.stopped, for: projectID)
         } else {
-            let message = "Sidecar exited with status \(statusCode)."
+            let message: String
+            if statusCode == 127 {
+                message = "Sidecar exited with status 127 (command not found). Verify Node is installed and set NODE_BINARY if needed."
+            } else {
+                message = "Sidecar exited with status \(statusCode)."
+            }
             setStatus(.error(message), for: projectID)
             if let ticketID = activeTicketByProject[projectID] {
                 continuation.yield(.ticketError(ticketID: ticketID, message: message))
@@ -313,6 +322,36 @@ actor CodexManager {
             throw ManagerError.missingSidecarScript(expanded)
         }
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    private func resolveNodeExecutablePath() throws -> String {
+        let explicitNode = ProcessInfo.processInfo.environment["NODE_BINARY"]
+            .map { ($0 as NSString).expandingTildeInPath }
+            .map { URL(fileURLWithPath: $0).standardizedFileURL.path }
+
+        let hardcodedCandidates = [
+            explicitNode,
+            "/opt/homebrew/bin/node",
+            "/usr/local/bin/node",
+            "/usr/bin/node",
+        ].compactMap { $0 }
+
+        let pathEntries = ProcessInfo.processInfo.environment["PATH"]?
+            .split(separator: ":")
+            .map(String.init) ?? []
+        let defaultEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let searchedEntries = Array(Set(pathEntries + defaultEntries))
+
+        let pathCandidates = searchedEntries.map { entry in
+            URL(fileURLWithPath: entry).appendingPathComponent("node").path
+        }
+
+        let allCandidates = hardcodedCandidates + pathCandidates
+        for candidate in allCandidates where fileManager.isExecutableFile(atPath: candidate) {
+            return candidate
+        }
+
+        throw ManagerError.missingNodeBinary
     }
 
     private static func extractLines(from data: Data) -> (lines: [String], remainder: Data) {
