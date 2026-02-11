@@ -2,7 +2,6 @@
 
 ## Planning
 
-- Use 'bd' for task tracking
 - Put docs and plans in `docs/` dir
 
 ## Imeplemtnation
