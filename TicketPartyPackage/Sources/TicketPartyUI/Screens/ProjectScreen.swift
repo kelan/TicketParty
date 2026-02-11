@@ -569,6 +569,13 @@ private struct ProjectTicketDetailPanel: View {
                             .disabled(isSending)
 
                             if isSending {
+                                Button("Stop") {
+                                    Task {
+                                        await codexViewModel.stop(ticket: ticket, project: project)
+                                    }
+                                }
+                                .tint(.red)
+
                                 ProgressView("Sending...")
                                     .controlSize(.small)
                                     .font(.caption)

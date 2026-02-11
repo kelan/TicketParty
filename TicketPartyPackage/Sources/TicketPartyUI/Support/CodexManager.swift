@@ -73,6 +73,11 @@ actor CodexManager {
         let projectID: String?
     }
 
+    private struct StopWorkerRequest: Encodable {
+        let type = "stopWorker"
+        let projectID: String
+    }
+
     private struct WorkerSnapshot: Sendable {
         let projectID: UUID
         let isRunning: Bool
@@ -89,6 +94,7 @@ actor CodexManager {
     private var statuses: [UUID: CodexProjectStatus] = [:]
     private var requestToTicket: [UUID: UUID] = [:]
     private var requestToProject: [UUID: UUID] = [:]
+    private var userStoppedProjects: Set<UUID> = []
     private var subscriptionTask: Task<Void, Never>?
 
     init(
@@ -190,6 +196,49 @@ actor CodexManager {
         setStatus(.running, for: projectID)
     }
 
+    func stopWorker(projectID: UUID) throws {
+        startSubscriptionTaskIfNeeded()
+        userStoppedProjects.insert(projectID)
+
+        let request = StopWorkerRequest(projectID: projectID.uuidString)
+        let payload = try Self.encodeLine(request)
+
+        let responseObject: [String: Any]
+        do {
+            responseObject = try Self.sendRequest(
+                payload: payload,
+                socketPath: supervisorSocketPath,
+                receiveTimeout: 5,
+                sendTimeout: 5
+            )
+        } catch let error as ManagerError {
+            userStoppedProjects.remove(projectID)
+            throw error
+        } catch {
+            userStoppedProjects.remove(projectID)
+            throw ManagerError.supervisorUnavailable(error.localizedDescription)
+        }
+
+        guard let type = responseObject["type"] as? String else {
+            userStoppedProjects.remove(projectID)
+            throw ManagerError.invalidResponse("Missing response type.")
+        }
+
+        if type == "error" {
+            let message = responseObject["message"] as? String ?? "Unknown supervisor error."
+            userStoppedProjects.remove(projectID)
+            throw ManagerError.requestFailed(message)
+        }
+
+        guard type == "stopWorker.ok" else {
+            userStoppedProjects.remove(projectID)
+            throw ManagerError.invalidResponse("Unexpected stopWorker response type '\(type)'.")
+        }
+
+        // stopWorker is idempotent; update the local status immediately in case no worker was running.
+        setStatus(.stopped, for: projectID)
+    }
+
     private func startSubscriptionTaskIfNeeded() {
         if let subscriptionTask, subscriptionTask.isCancelled == false {
             return
@@ -216,7 +265,9 @@ actor CodexManager {
 
         case "worker.exited":
             guard let projectID = parseUUID(payload["projectID"] as? String) else { return }
-            if let message = payload["message"] as? String {
+            if userStoppedProjects.remove(projectID) != nil {
+                setStatus(.stopped, for: projectID)
+            } else if let message = payload["message"] as? String {
                 setStatus(.error(message), for: projectID)
             } else {
                 setStatus(.stopped, for: projectID)
@@ -683,6 +734,17 @@ final class CodexViewModel {
                 try? await Task.sleep(for: minSpinnerDuration - elapsed)
             }
             setTicketSending(false, for: ticketID)
+        }
+    }
+
+    func stop(ticket: Ticket, project: Project) async {
+        let ticketID = ticket.id
+
+        do {
+            try await manager.stopWorker(projectID: project.id)
+            setTicketSending(false, for: ticketID)
+        } catch {
+            ticketErrors[ticketID] = error.localizedDescription
         }
     }
 
