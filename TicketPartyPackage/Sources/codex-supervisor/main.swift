@@ -331,8 +331,8 @@ private final class ControlServer: @unchecked Sendable {
         let projectID: UUID?
     }
 
-    private static let maxEventLogBytes = 10 * 1024 * 1024
-    private static let maxEventAgeMS: Int64 = 7 * 24 * 60 * 60 * 1000
+    private static let maxEventLogBytes = 10 * 1_024 * 1_024
+    private static let maxEventAgeMS: Int64 = 7 * 24 * 60 * 60 * 1_000
 
     private let runtimeDirectory: String
     private let socketPath: String
@@ -590,7 +590,7 @@ private final class ControlServer: @unchecked Sendable {
             pid: getpid(),
             protocolVersion: protocolVersion,
             instanceToken: instanceToken,
-            serverTimeEpochMS: Int64(Date().timeIntervalSince1970 * 1000)
+            serverTimeEpochMS: Int64(Date().timeIntervalSince1970 * 1_000)
         )
         _ = sendJSON(response, to: fd)
     }
@@ -692,7 +692,7 @@ private final class ControlServer: @unchecked Sendable {
                 idempotencyKey: request.idempotencyKey
             )
             recordTaskFailure(projectID: projectID, taskID: taskID, summary: summary)
-            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let now = Int64(Date().timeIntervalSince1970 * 1_000)
             emitTaskFailed(
                 projectID: projectID,
                 ticketID: nil,
@@ -2073,7 +2073,7 @@ private final class ControlServer: @unchecked Sendable {
         idempotencyKey: String?
     ) {
         var projectTasks = taskRecords[projectID] ?? [:]
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
         projectTasks[taskID] = TaskStatusEntry(
             projectID: projectID.uuidString,
             taskID: taskID.uuidString,
@@ -2105,7 +2105,7 @@ private final class ControlServer: @unchecked Sendable {
         task.state = success ? "completed" : "failed"
         task.success = success
         task.summary = summary
-        task.completedAtEpochMS = Int64(Date().timeIntervalSince1970 * 1000)
+        task.completedAtEpochMS = Int64(Date().timeIntervalSince1970 * 1_000)
         projectTasks[taskID] = task
         taskRecords[projectID] = projectTasks
 
@@ -2232,7 +2232,7 @@ private final class ControlServer: @unchecked Sendable {
         }
 
         guard let data = try? Data(contentsOf: url), data.isEmpty == false else { return }
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
         let cutoff = now - Self.maxEventAgeMS
 
         let decoder = JSONDecoder()
@@ -2262,7 +2262,7 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private func broadcast(_ event: SupervisorEvent) {
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Int64(Date().timeIntervalSince1970 * 1_000)
         var eventToSend = event
         if eventToSend.timestampEpochMS == nil {
             eventToSend = SupervisorEvent(
@@ -2425,9 +2425,9 @@ private final class ControlServer: @unchecked Sendable {
         }
     }
 
-    private func readLine(from fd: Int32, maxBytes: Int = 65536) -> String? {
+    private func readLine(from fd: Int32, maxBytes: Int = 65_536) -> String? {
         var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
+        var buffer = [UInt8](repeating: 0, count: 1_024)
 
         while data.count < maxBytes {
             let count = Darwin.read(fd, &buffer, buffer.count)
@@ -2606,7 +2606,7 @@ private final class SupervisorRuntime {
 
         let record = SupervisorRuntimeRecord(
             pid: getpid(),
-            startedAtEpochMS: Int64(Date().timeIntervalSince1970 * 1000),
+            startedAtEpochMS: Int64(Date().timeIntervalSince1970 * 1_000),
             protocolVersion: configuration.protocolVersion,
             binaryPath: URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.path,
             binaryHash: nil,

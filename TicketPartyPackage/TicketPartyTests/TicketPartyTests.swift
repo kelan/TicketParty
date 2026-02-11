@@ -93,7 +93,7 @@ struct TicketPartyTests {
         let ticketID = UUID()
 
         let first = try store.startRun(projectID: UUID(), ticketID: ticketID, requestID: nil)
-        usleep(10000)
+        usleep(10_000)
         let second = try store.startRun(projectID: UUID(), ticketID: ticketID, requestID: nil)
 
         let run = try #require(try store.latestRun(ticketID: ticketID))

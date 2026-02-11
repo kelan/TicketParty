@@ -249,9 +249,9 @@ actor CodexSupervisorHealthChecker {
         }
     }
 
-    private func readLine(from fd: Int32, maxBytes: Int = 16384) -> String? {
+    private func readLine(from fd: Int32, maxBytes: Int = 16_384) -> String? {
         var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
+        var buffer = [UInt8](repeating: 0, count: 1_024)
 
         while data.count < maxBytes {
             let count = Darwin.read(fd, &buffer, buffer.count)

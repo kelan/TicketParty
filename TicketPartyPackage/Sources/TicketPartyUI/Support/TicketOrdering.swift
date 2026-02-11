@@ -3,7 +3,7 @@ import SwiftData
 import TicketPartyDataStore
 
 enum TicketOrdering {
-    static let keyStep: Int64 = 1024
+    static let keyStep: Int64 = 1_024
 
     static func nextSeedOrderKey(
         context: ModelContext,

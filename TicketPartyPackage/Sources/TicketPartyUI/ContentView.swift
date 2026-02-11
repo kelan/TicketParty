@@ -270,18 +270,18 @@ public struct TicketPartyRootView: View {
             return "just now"
         }
 
-        if seconds < 3600 {
+        if seconds < 3_600 {
             let minutes = Int(seconds / 60)
             return "\(minutes) min ago"
         }
 
-        if seconds < 86400 {
-            let hours = Int(seconds / 3600)
+        if seconds < 86_400 {
+            let hours = Int(seconds / 3_600)
             return "\(hours) hr ago"
         }
 
         if seconds < 172_800 {
-            let days = Int(seconds / 86400)
+            let days = Int(seconds / 86_400)
             return "\(days) day ago"
         }
 

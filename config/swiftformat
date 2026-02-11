@@ -109,7 +109,9 @@
 
 --indent 4
 --xcodeindentation enabled
---decimalgrouping 3,6
+--decimalgrouping 3  # Groups of 3 (e.g., 1_000_000)
+--hexgrouping 4      # Groups of 4 for hex (e.g., 0x1234_5678)
+
 --allman false
 --emptybraces no-space
 --extensionacl on-extension

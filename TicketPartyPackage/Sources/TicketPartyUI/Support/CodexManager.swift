@@ -911,9 +911,9 @@ actor CodexManager {
         return fd
     }
 
-    private nonisolated static func readLine(from fd: Int32, maxBytes: Int = 65536) -> String? {
+    private nonisolated static func readLine(from fd: Int32, maxBytes: Int = 65_536) -> String? {
         var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 1024)
+        var buffer = [UInt8](repeating: 0, count: 1_024)
 
         while data.count < maxBytes {
             let count = Darwin.read(fd, &buffer, buffer.count)
