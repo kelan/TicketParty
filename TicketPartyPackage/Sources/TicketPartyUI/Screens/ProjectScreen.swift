@@ -50,8 +50,8 @@ struct ProjectDetailView: View {
     }
 
     private var visibleTickets: [Ticket] {
-        inProgressTickets(in: scopedAndFilteredTickets) +
-            recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit) +
+        recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit) +
+            inProgressTickets(in: scopedAndFilteredTickets) +
             backlogTickets(in: scopedAndFilteredTickets) +
             otherTickets(in: scopedAndFilteredTickets)
     }
@@ -361,17 +361,17 @@ private struct ProjectWorkspaceView: View {
             Divider()
 
             List(selection: $selectedTicketID) {
-                if inProgressTickets.isEmpty == false {
-                    Section("In Progress") {
-                        ForEach(inProgressTickets, id: \.id) { ticket in
+                if recentDoneTickets.isEmpty == false {
+                    Section("Recently Done") {
+                        ForEach(recentDoneTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                         }
                     }
                 }
 
-                if recentDoneTickets.isEmpty == false {
-                    Section("Recent Done") {
-                        ForEach(recentDoneTickets, id: \.id) { ticket in
+                if inProgressTickets.isEmpty == false {
+                    Section("In Progress") {
+                        ForEach(inProgressTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                         }
                     }
