@@ -82,7 +82,7 @@
 			path = TicketPartyPackage;
 			sourceTree = "<group>";
 		};
-		7641064B2F3C20000008EB12 /* TicketPartyTestsSources */ = {
+		7641064B2F3C20000008EB12 /* TicketPartyPackage/TicketPartyTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = TicketPartyPackage/TicketPartyTests;
 			sourceTree = "<group>";
@@ -126,7 +126,7 @@
 				7641053E2F3B90520008EB12 /* config */,
 				764105C82F3BBCB30008EB12 /* App */,
 				7641060C2F3BC4D20008EB12 /* TicketPartyPackage */,
-				7641064B2F3C20000008EB12 /* TicketPartyTestsSources */,
+				7641064B2F3C20000008EB12 /* TicketPartyPackage/TicketPartyTests */,
 				764105192F3B17B10008EB12 /* UITests */,
 				7641054F2F3B918A0008EB12 /* xcconfig */,
 				764106242F3BC9A10008EB12 /* Frameworks */,
@@ -191,7 +191,7 @@
 				7641050E2F3B17B10008EB12 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				7641064B2F3C20000008EB12 /* TicketPartyTestsSources */,
+				7641064B2F3C20000008EB12 /* TicketPartyPackage/TicketPartyTests */,
 			);
 			name = TicketPartyTests;
 			packageProductDependencies = (
