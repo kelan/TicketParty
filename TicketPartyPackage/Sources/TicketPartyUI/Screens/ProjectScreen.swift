@@ -53,8 +53,7 @@ struct ProjectDetailView: View {
     private var visibleTickets: [Ticket] {
         recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit) +
             inProgressTickets(in: scopedAndFilteredTickets) +
-            backlogTickets(in: scopedAndFilteredTickets) +
-            otherTickets(in: scopedAndFilteredTickets)
+            backlogTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleInProgressTickets: [Ticket] {
@@ -328,7 +327,7 @@ struct ProjectDetailView: View {
     private func recentDoneTickets(in tickets: [Ticket], limit: Int) -> [Ticket] {
         Array(
             tickets
-                .filter { $0.quickStatus.isDoneGroup }
+                .filter { $0.quickStatus.isDone }
                 .sorted(by: sortByMostRecentlyUpdated)
                 .prefix(limit)
                 .reversed()
@@ -343,7 +342,7 @@ struct ProjectDetailView: View {
 
     private func otherTickets(in tickets: [Ticket]) -> [Ticket] {
         tickets
-            .filter { $0.quickStatus != .inProgress && $0.quickStatus.isDoneGroup == false && $0.quickStatus.isBacklogSortable == false }
+            .filter { $0.quickStatus != .inProgress && $0.quickStatus.isDone == false && $0.quickStatus.isBacklogSortable == false }
             .sorted(by: sortByOrderKeyAndCreatedAt)
     }
 
@@ -391,32 +390,41 @@ private struct ProjectWorkspaceView: View {
 
             List(selection: $selectedTicketID) {
                 if recentDoneTickets.isEmpty == false {
-                    Section("Recently Done") {
+                    Section {
                         ForEach(recentDoneTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                                 .foregroundStyle(.secondary)
                                 .tag(ticket.id)
                         }
+                    } header: {
+                        Text("Recently Done")
+                            .font(.title2)
                     }
                 }
 
                 if inProgressTickets.isEmpty == false {
-                    Section("In Progress") {
+                    Section {
                         ForEach(inProgressTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                                 .tag(ticket.id)
                         }
+                    } header: {
+                        Text("In Progress")
+                            .font(.title2)
                     }
                 }
 
                 if backlogTickets.isEmpty == false {
-                    Section("Backlog") {
+                    Section {
                         ForEach(backlogTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                                 .moveDisabled(isBacklogReorderingEnabled == false)
                                 .tag(ticket.id)
                         }
                         .onMove(perform: onMoveBacklogTickets)
+                    } header: {
+                        Text("Backlog")
+                            .font(.title2)
                     }
                 }
 
@@ -527,7 +535,7 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
         case .inProgress:
             return status == .inProgress
         case .done:
-            return status.isDoneGroup
+            return status.isDone
         }
     }
 }
@@ -728,9 +736,6 @@ private struct TicketStatusBadge: View {
 }
 
 private extension TicketQuickStatus {
-    var isDoneGroup: Bool {
-        self == .done || self == .skipped
-    }
 
     var isBacklogSortable: Bool {
         self == .backlog || self == .blocked
