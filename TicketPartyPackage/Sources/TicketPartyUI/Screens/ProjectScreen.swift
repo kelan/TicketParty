@@ -102,7 +102,8 @@ struct ProjectDetailView: View {
             searchText: $searchText,
             selectedTicket: selectedTicket,
             isBacklogReorderingEnabled: isBacklogReorderingEnabled,
-            onMoveBacklogTickets: moveBacklogTickets
+            onMoveBacklogTickets: moveBacklogTickets,
+            onOpenTicketForEditing: openTicketForEditing
         )
         .navigationTitle(project.name)
         .toolbar {
@@ -116,7 +117,7 @@ struct ProjectDetailView: View {
 
                 if let selectedTicket {
                     Button {
-                        ticketEditSession = TicketEditSession(id: selectedTicket.id)
+                        openTicketForEditing(selectedTicket.id)
                     } label: {
                         Image(systemName: "pencil")
                     }
@@ -222,7 +223,12 @@ struct ProjectDetailView: View {
 
     private func requestEditSelectedTicket() {
         guard let selectedTicket else { return }
-        ticketEditSession = TicketEditSession(id: selectedTicket.id)
+        openTicketForEditing(selectedTicket.id)
+    }
+
+    private func openTicketForEditing(_ ticketID: UUID) {
+        selectedTicketID = ticketID
+        ticketEditSession = TicketEditSession(id: ticketID)
     }
 
     private func applyTicketEdits(ticketID: UUID, draft: TicketDraft) {
@@ -349,6 +355,7 @@ private struct ProjectWorkspaceView: View {
     let selectedTicket: Ticket?
     let isBacklogReorderingEnabled: Bool
     let onMoveBacklogTickets: (IndexSet, Int) -> Void
+    let onOpenTicketForEditing: (UUID) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
@@ -367,6 +374,7 @@ private struct ProjectWorkspaceView: View {
                         ForEach(recentDoneTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                                 .foregroundStyle(.secondary)
+                                .tag(ticket.id)
                         }
                     }
                 }
@@ -375,6 +383,7 @@ private struct ProjectWorkspaceView: View {
                     Section("In Progress") {
                         ForEach(inProgressTickets, id: \.id) { ticket in
                             ticketRow(ticket)
+                                .tag(ticket.id)
                         }
                     }
                 }
@@ -384,6 +393,7 @@ private struct ProjectWorkspaceView: View {
                         ForEach(backlogTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                                 .moveDisabled(isBacklogReorderingEnabled == false)
+                                .tag(ticket.id)
                         }
                         .onMove(perform: onMoveBacklogTickets)
                     }
@@ -393,6 +403,7 @@ private struct ProjectWorkspaceView: View {
                     Section("Other") {
                         ForEach(otherTickets, id: \.id) { ticket in
                             ticketRow(ticket)
+                                .tag(ticket.id)
                         }
                     }
                 }
@@ -443,6 +454,16 @@ private struct ProjectWorkspaceView: View {
             TicketStatusBadge(status: ticket.quickStatus)
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedTicketID = ticket.id
+        }
+        .simultaneousGesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    onOpenTicketForEditing(ticket.id)
+                }
+        )
     }
 }
 
