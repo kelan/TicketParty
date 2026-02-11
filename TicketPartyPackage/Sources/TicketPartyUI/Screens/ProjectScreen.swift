@@ -336,6 +336,7 @@ struct ProjectDetailView: View {
 }
 
 private struct ProjectWorkspaceView: View {
+    @Environment(CodexViewModel.self) private var codexViewModel
     let project: Project
     let inProgressTickets: [Ticket]
     let recentDoneTickets: [Ticket]
@@ -430,6 +431,14 @@ private struct ProjectWorkspaceView: View {
             }
 
             Spacer(minLength: 0)
+
+            if codexViewModel.ticketIsSending[ticket.id] == true {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 8, height: 8)
+                    .padding(.top, 6)
+                    .accessibilityLabel("Running with agent")
+            }
 
             TicketStatusBadge(status: ticket.quickStatus)
         }
