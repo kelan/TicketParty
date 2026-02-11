@@ -1,13 +1,22 @@
 {
-  "originHash" : "a4ee7563c068f54a474052b20629bc9f1c15d9070c010d3831b8915be2a7dee4",
+  "originHash" : "a39c4c37b15de6bea5fd7ab71d5bbcb2265beecfbacbbd06f2d236cfaa829358",
   "pins" : [
     {
-      "identity" : "swift-concurrency-extras",
+      "identity" : "swift-docc-plugin",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/pointfreeco/swift-concurrency-extras",
+      "location" : "https://github.com/apple/swift-docc-plugin",
       "state" : {
-        "revision" : "5a3825302b1a0d744183200915a47b508c828e6f",
-        "version" : "1.3.2"
+        "revision" : "e977f65879f82b375a044c8837597f690c067da6",
+        "version" : "1.4.6"
+      }
+    },
+    {
+      "identity" : "swift-docc-symbolkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-docc-symbolkit",
+      "state" : {
+        "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
+        "version" : "1.0.0"
       }
     }
   ],

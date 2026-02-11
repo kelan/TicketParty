@@ -20,10 +20,16 @@ struct ProjectDetailView: View {
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
     private let overviewDoneLimit = 5
+    private let isPreview: Bool
 
-    init(project: Project, onRequestNewTicket: @escaping (UUID?) -> Void = { _ in }) {
+    init(
+        project: Project,
+        onRequestNewTicket: @escaping (UUID?) -> Void = { _ in },
+        isPreview: Bool = false
+    ) {
         self.project = project
         self.onRequestNewTicket = onRequestNewTicket
+        self.isPreview = isPreview
     }
 
     private var tickets: [Ticket] {
@@ -122,7 +128,8 @@ struct ProjectDetailView: View {
             selectedTicket: selectedTicket,
             isBacklogReorderingEnabled: isBacklogReorderingEnabled,
             onMoveBacklogTickets: moveBacklogTickets,
-            onOpenTicketForEditing: openTicketForEditing
+            onOpenTicketForEditing: openTicketForEditing,
+            isPreview: isPreview
         )
         .navigationTitle(project.name)
         .toolbar {
@@ -190,15 +197,19 @@ struct ProjectDetailView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketUpRequested)) { _ in
+            guard isPreview == false else { return }
             moveSelectedTicket(by: -1)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketDownRequested)) { _ in
+            guard isPreview == false else { return }
             moveSelectedTicket(by: 1)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyEditSelectedTicketRequested)) { _ in
+            guard isPreview == false else { return }
             requestEditSelectedTicket()
         }
         .onAppear {
+            guard isPreview == false else { return }
             if selectedTicketID == nil {
                 selectedTicketID = visibleTickets.first?.id
             }
@@ -207,10 +218,12 @@ struct ProjectDetailView: View {
             }
         }
         .onChange(of: selectedTicketID) { _, newID in
+            guard isPreview == false else { return }
             guard let newID else { return }
             selectionAnchorTicketID = newID
         }
         .onChange(of: visibleTickets.map(\.id)) { _, ids in
+            guard isPreview == false else { return }
             guard ids.isEmpty == false else {
                 if isSoftFilterActive {
                     selectedTicketID = nil
@@ -389,6 +402,7 @@ private struct ProjectWorkspaceView: View {
     let isBacklogReorderingEnabled: Bool
     let onMoveBacklogTickets: (IndexSet, Int) -> Void
     let onOpenTicketForEditing: (UUID) -> Void
+    let isPreview: Bool
 
     var body: some View {
         HStack(spacing: 0) {
@@ -401,7 +415,7 @@ private struct ProjectWorkspaceView: View {
 
             Divider()
 
-            List(selection: $selectedTicketID) {
+            List(selection: isPreview ? .constant(nil) : $selectedTicketID) {
                 if recentDoneTickets.isEmpty == false {
                     Section {
                         ForEach(recentDoneTickets, id: \.id) { ticket in
@@ -482,6 +496,12 @@ private struct ProjectWorkspaceView: View {
                         .truncationMode(.tail)
                 }
 
+                if let doneDateStamp = doneDateStamp(for: ticket) {
+                    Text(doneDateStamp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 HStack(spacing: 8) {
                     Text(ticket.displayID)
                     Text(ticket.size.title)
@@ -505,14 +525,22 @@ private struct ProjectWorkspaceView: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .onTapGesture {
+            guard isPreview == false else { return }
             selectedTicketID = ticket.id
         }
         .simultaneousGesture(
             TapGesture(count: 2)
                 .onEnded {
+                    guard isPreview == false else { return }
                     onOpenTicketForEditing(ticket.id)
                 }
         )
+    }
+
+    private func doneDateStamp(for ticket: Ticket) -> String? {
+        guard ticket.quickStatus.isDone else { return nil }
+        let doneDate = ticket.doneAt ?? ticket.updatedAt
+        return "Done \(doneDate.formatted(date: .abbreviated, time: .omitted))"
     }
 }
 
@@ -863,13 +891,18 @@ struct ProjectEditorSheet: View {
 }
 
 #Preview {
-    ProjectDetailView(project: ProjectPreviewData.project)
+    ProjectDetailView(project: ProjectPreviewData.project, isPreview: true)
         .modelContainer(ProjectPreviewData.container)
-        .environment(CodexViewModel())
+        .environment(ProjectPreviewData.codexViewModel)
 }
 
 @MainActor
 private enum ProjectPreviewData {
+    static let codexViewModel = CodexViewModel(
+        manager: CodexManager(resumeSubscriptionsOnInit: false),
+        startBackgroundTasks: false
+    )
+
     static let container: ModelContainer = {
         let schema = Schema([Project.self, Ticket.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

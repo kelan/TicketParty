@@ -130,6 +130,40 @@ struct TicketPartyTests {
     }
 
     @Test
+    func quickStatus_setsDoneTimestampAndClearsWhenReopened() {
+        let ticket = Ticket(
+            ticketNumber: 1,
+            displayID: "TT-1",
+            title: "Track done timestamp",
+            description: "Ensure doneAt follows status changes",
+            stateID: TicketQuickStatus.backlog.stateID
+        )
+        #expect(ticket.doneAt == nil)
+
+        ticket.quickStatus = .done
+        #expect(ticket.doneAt != nil)
+
+        ticket.quickStatus = .inProgress
+        #expect(ticket.doneAt == nil)
+    }
+
+    @Test
+    func quickStatus_keepsExistingDoneTimestampAcrossTerminalStatuses() {
+        let doneAt = Date(timeIntervalSince1970: 1_234_567)
+        let ticket = Ticket(
+            ticketNumber: 2,
+            displayID: "TT-2",
+            title: "Keep done timestamp",
+            description: "Switch done -> skipped without resetting timestamp",
+            stateID: TicketQuickStatus.done.stateID,
+            doneAt: doneAt
+        )
+
+        ticket.quickStatus = .skipped
+        #expect(ticket.doneAt == doneAt)
+    }
+
+    @Test
     @MainActor
     func codexViewModel_streamEvents_persistTranscriptLifecycle() async throws {
         _ = try TestEnvironment()

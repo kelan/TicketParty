@@ -90,7 +90,18 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
 extension Ticket {
     var quickStatus: TicketQuickStatus {
         get { TicketQuickStatus(stateID: stateID) }
-        set { stateID = newValue.stateID }
+        set {
+            let wasDone = TicketQuickStatus(stateID: stateID).isDone
+            stateID = newValue.stateID
+
+            if newValue.isDone {
+                if wasDone == false || doneAt == nil {
+                    doneAt = .now
+                }
+            } else {
+                doneAt = nil
+            }
+        }
     }
 }
 

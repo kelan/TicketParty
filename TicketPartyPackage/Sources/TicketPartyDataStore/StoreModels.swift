@@ -49,6 +49,7 @@ public final class Ticket {
     public var assigneeID: UUID?
     public var createdAt: Date
     public var updatedAt: Date
+    public var doneAt: Date?
     public var closedAt: Date?
     public var archivedAt: Date?
 
@@ -66,6 +67,7 @@ public final class Ticket {
         assigneeID: UUID? = nil,
         createdAt: Date = .now,
         updatedAt: Date = .now,
+        doneAt: Date? = nil,
         closedAt: Date? = nil,
         archivedAt: Date? = nil
     ) {
@@ -82,6 +84,7 @@ public final class Ticket {
         self.assigneeID = assigneeID
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.doneAt = doneAt
         self.closedAt = closedAt
         self.archivedAt = archivedAt
     }

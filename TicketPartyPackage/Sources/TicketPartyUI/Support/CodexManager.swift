@@ -158,7 +158,8 @@ actor CodexManager {
     init(
         supervisorSocketPath: String = "$HOME/Library/Application Support/TicketParty/runtime/supervisor.sock",
         cursorStorePath: String = "$HOME/Library/Application Support/TicketParty/runtime/supervisor-cursors.json",
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        resumeSubscriptionsOnInit: Bool = true
     ) {
         var streamContinuation: AsyncStream<Event>.Continuation?
         events = AsyncStream<Event> { continuation in
@@ -171,8 +172,10 @@ actor CodexManager {
         self.cursorStorePath = Self.expandPath(cursorStorePath)
         cursorByProject = Self.loadCursorStore(path: Self.expandPath(cursorStorePath))
 
-        Task { [weak self] in
-            await self?.resumeProjectSubscriptionsForActiveTasks()
+        if resumeSubscriptionsOnInit {
+            Task { [weak self] in
+                await self?.resumeProjectSubscriptionsForActiveTasks()
+            }
         }
     }
 
@@ -1053,43 +1056,46 @@ final class CodexViewModel {
     init(
         manager: CodexManager = CodexManager(),
         supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker(),
-        transcriptStore: TicketTranscriptStore = TicketTranscriptStore()
+        transcriptStore: TicketTranscriptStore = TicketTranscriptStore(),
+        startBackgroundTasks: Bool = true
     ) {
         self.manager = manager
         loopManager = TicketLoopManager(executor: manager)
         self.supervisorHealthChecker = supervisorHealthChecker
         self.transcriptStore = transcriptStore
 
-        do {
-            try transcriptStore.markInterruptedRunsAsFailed(now: .now)
-        } catch {
-            NSLog("Ticket transcript recovery failed: %@", error.localizedDescription)
-        }
+        if startBackgroundTasks {
+            do {
+                try transcriptStore.markInterruptedRunsAsFailed(now: .now)
+            } catch {
+                NSLog("Ticket transcript recovery failed: %@", error.localizedDescription)
+            }
 
-        eventTask = Task { [manager, weak self] in
-            for await event in manager.events {
-                guard let self else { return }
-                await MainActor.run {
-                    self.consume(event)
+            eventTask = Task { [manager, weak self] in
+                for await event in manager.events {
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.consume(event)
+                    }
                 }
             }
-        }
 
-        loopEventTask = Task { [loopManager, weak self] in
-            for await event in loopManager.events {
-                guard let self else { return }
-                await MainActor.run {
-                    self.consumeLoopEvent(event)
+            loopEventTask = Task { [loopManager, weak self] in
+                for await event in loopManager.events {
+                    guard let self else { return }
+                    await MainActor.run {
+                        self.consumeLoopEvent(event)
+                    }
                 }
             }
-        }
 
-        supervisorHealthTask = Task { [weak self] in
-            guard let self else { return }
-            await self.refreshSupervisorHealth()
-            while Task.isCancelled == false {
-                try? await Task.sleep(for: .seconds(5))
+            supervisorHealthTask = Task { [weak self] in
+                guard let self else { return }
                 await self.refreshSupervisorHealth()
+                while Task.isCancelled == false {
+                    try? await Task.sleep(for: .seconds(5))
+                    await self.refreshSupervisorHealth()
+                }
             }
         }
     }
