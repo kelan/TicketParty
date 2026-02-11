@@ -306,11 +306,13 @@ struct ProjectDetailView: View {
     }
 
     private func recentDoneTickets(in tickets: [Ticket], limit: Int) -> [Ticket] {
-        tickets
-            .filter { $0.quickStatus == .done }
-            .sorted(by: sortByMostRecentlyUpdated)
-            .prefix(limit)
-            .map(\.self)
+        Array(
+            tickets
+                .filter { $0.quickStatus.isDoneGroup }
+                .sorted(by: sortByMostRecentlyUpdated)
+                .prefix(limit)
+                .reversed()
+        )
     }
 
     private func backlogTickets(in tickets: [Ticket]) -> [Ticket] {
@@ -321,7 +323,7 @@ struct ProjectDetailView: View {
 
     private func otherTickets(in tickets: [Ticket]) -> [Ticket] {
         tickets
-            .filter { $0.quickStatus != .inProgress && $0.quickStatus != .done && $0.quickStatus.isBacklogSortable == false }
+            .filter { $0.quickStatus != .inProgress && $0.quickStatus.isDoneGroup == false && $0.quickStatus.isBacklogSortable == false }
             .sorted(by: sortByOrderKeyAndCreatedAt)
     }
 
@@ -497,7 +499,7 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
         case .inProgress:
             return status == .inProgress
         case .done:
-            return status == .done
+            return status.isDoneGroup
         }
     }
 }
@@ -698,6 +700,10 @@ private struct TicketStatusBadge: View {
 }
 
 private extension TicketQuickStatus {
+    var isDoneGroup: Bool {
+        self == .done || self == .skipped
+    }
+
     var isBacklogSortable: Bool {
         self == .backlog || self == .blocked
     }
