@@ -153,7 +153,8 @@ actor CodexManager {
 
         requestToTicket[requestID] = ticketID
         requestToProject[requestID] = projectID
-        setStatus(.starting, for: projectID)
+        // sendTicket.ok confirms supervisor accepted the request; treat project as active.
+        setStatus(.running, for: projectID)
     }
 
     private func startSubscriptionTaskIfNeeded() {
