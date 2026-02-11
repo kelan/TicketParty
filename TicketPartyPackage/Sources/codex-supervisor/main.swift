@@ -801,11 +801,12 @@ private final class ControlServer: @unchecked Sendable {
 
         case "codex.event":
             guard let activeRequest else { return }
-            if let eventPayload = payload["event"] as? [String: Any] {
-                if
-                    let nestedType = eventPayload["type"] as? String,
-                    nestedType == "turn.failed"
-                {
+            if
+                let eventPayload = payload["event"] as? [String: Any],
+                let nestedType = eventPayload["type"] as? String
+            {
+                switch nestedType {
+                case "turn.failed":
                     let message = extractErrorMessage(from: eventPayload) ?? "Codex turn failed."
                     broadcast(
                         SupervisorEvent(
@@ -837,12 +838,8 @@ private final class ControlServer: @unchecked Sendable {
                     )
                     clearRequest(activeRequest)
                     return
-                }
 
-                if
-                    let nestedType = eventPayload["type"] as? String,
-                    nestedType == "turn.completed"
-                {
+                case "turn.completed":
                     broadcast(
                         SupervisorEvent(
                             type: "ticket.completed",
@@ -859,6 +856,42 @@ private final class ControlServer: @unchecked Sendable {
                     )
                     clearRequest(activeRequest)
                     return
+
+                case "turn.cancelled", "turn.canceled", "turn.aborted":
+                    let message = "Codex turn was cancelled."
+                    broadcast(
+                        SupervisorEvent(
+                            type: "ticket.error",
+                            projectID: activeRequest.projectID.uuidString,
+                            ticketID: activeRequest.ticketID.uuidString,
+                            requestID: activeRequest.requestID.uuidString,
+                            pid: nil,
+                            text: nil,
+                            message: message,
+                            success: nil,
+                            summary: nil,
+                            threadID: nil
+                        )
+                    )
+                    broadcast(
+                        SupervisorEvent(
+                            type: "ticket.completed",
+                            projectID: activeRequest.projectID.uuidString,
+                            ticketID: activeRequest.ticketID.uuidString,
+                            requestID: activeRequest.requestID.uuidString,
+                            pid: nil,
+                            text: nil,
+                            message: nil,
+                            success: false,
+                            summary: message,
+                            threadID: nil
+                        )
+                    )
+                    clearRequest(activeRequest)
+                    return
+
+                default:
+                    break
                 }
             }
 
