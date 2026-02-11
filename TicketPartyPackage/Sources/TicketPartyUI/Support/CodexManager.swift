@@ -26,6 +26,7 @@ enum CodexProjectStatus: Sendable, Equatable {
 actor CodexManager {
     enum Event: Sendable {
         case statusChanged(projectID: UUID, status: CodexProjectStatus)
+        case ticketStarted(ticketID: UUID)
         case ticketOutput(ticketID: UUID, line: String)
         case ticketError(ticketID: UUID, message: String)
         case ticketCompleted(ticketID: UUID, success: Bool, summary: String?)
@@ -67,6 +68,18 @@ actor CodexManager {
         let type = "subscribe"
     }
 
+    private struct WorkerStatusRequest: Encodable {
+        let type = "workerStatus"
+        let projectID: String?
+    }
+
+    private struct WorkerSnapshot: Sendable {
+        let projectID: UUID
+        let isRunning: Bool
+        let activeRequestID: UUID?
+        let activeTicketID: UUID?
+    }
+
     nonisolated let events: AsyncStream<Event>
     private let continuation: AsyncStream<Event>.Continuation
 
@@ -92,6 +105,9 @@ actor CodexManager {
         self.supervisorSocketPath = Self.expandPath(supervisorSocketPath)
 
         subscriptionTask = nil
+        Task { [weak self] in
+            await self?.startSubscriptionTaskIfNeeded()
+        }
     }
 
     deinit {
@@ -149,9 +165,14 @@ actor CodexManager {
 
             if type == "error" {
                 let message = responseObject["message"] as? String ?? "Unknown supervisor error."
-                if Self.isBusyInFlightMessage(message), attempt < maxAttempts {
-                    try? await Task.sleep(for: .milliseconds(250))
-                    continue
+                if Self.isBusyInFlightMessage(message) {
+                    if try reattachToInFlightRequest(projectID: projectID, requestedTicketID: ticketID) {
+                        return
+                    }
+                    if attempt < maxAttempts {
+                        try? await Task.sleep(for: .milliseconds(250))
+                        continue
+                    }
                 }
                 throw ManagerError.requestFailed(message)
             }
@@ -201,6 +222,18 @@ actor CodexManager {
                 setStatus(.stopped, for: projectID)
             }
 
+        case "ticket.started":
+            guard let ticketID = resolveTicketID(payload: payload) else { return }
+            if
+                let requestID = parseUUID(payload["requestID"] as? String),
+                let projectID = parseUUID(payload["projectID"] as? String)
+            {
+                requestToTicket[requestID] = ticketID
+                requestToProject[requestID] = projectID
+                setStatus(.running, for: projectID)
+            }
+            continuation.yield(.ticketStarted(ticketID: ticketID))
+
         case "ticket.output":
             guard let ticketID = resolveTicketID(payload: payload) else { return }
             let line = payload["text"] as? String ?? ""
@@ -225,6 +258,78 @@ actor CodexManager {
 
     private func handleSubscriptionDisconnected() {
         // Keep current status unchanged; reconnect loop will restore streaming on success.
+    }
+
+    private func refreshWorkerStateSnapshot() {
+        guard let snapshots = try? fetchWorkerSnapshots(projectID: nil) else { return }
+        applyWorkerSnapshots(snapshots)
+    }
+
+    private func applyWorkerSnapshots(_ snapshots: [WorkerSnapshot]) {
+        for snapshot in snapshots {
+            if snapshot.isRunning {
+                setStatus(.running, for: snapshot.projectID)
+            }
+
+            if
+                let activeRequestID = snapshot.activeRequestID,
+                let activeTicketID = snapshot.activeTicketID
+            {
+                requestToTicket[activeRequestID] = activeTicketID
+                requestToProject[activeRequestID] = snapshot.projectID
+            }
+
+            if let activeTicketID = snapshot.activeTicketID {
+                continuation.yield(.ticketStarted(ticketID: activeTicketID))
+            }
+        }
+    }
+
+    private func reattachToInFlightRequest(projectID: UUID, requestedTicketID: UUID) throws -> Bool {
+        guard let snapshot = try fetchWorkerSnapshots(projectID: projectID).first else {
+            return false
+        }
+
+        applyWorkerSnapshots([snapshot])
+        return snapshot.activeTicketID == requestedTicketID
+    }
+
+    private func fetchWorkerSnapshots(projectID: UUID?) throws -> [WorkerSnapshot] {
+        let request = WorkerStatusRequest(projectID: projectID?.uuidString)
+        let payload = try Self.encodeLine(request)
+        let responseObject = try Self.sendRequest(
+            payload: payload,
+            socketPath: supervisorSocketPath,
+            receiveTimeout: 5,
+            sendTimeout: 5
+        )
+
+        guard let type = responseObject["type"] as? String, type == "workerStatus.ok" else {
+            throw ManagerError.invalidResponse("Unexpected workerStatus response.")
+        }
+
+        guard let workerArray = responseObject["workers"] as? [[String: Any]] else {
+            throw ManagerError.invalidResponse("workerStatus response missing worker list.")
+        }
+
+        return workerArray.compactMap { worker in
+            guard
+                let projectIDRaw = worker["projectID"] as? String,
+                let resolvedProjectID = UUID(uuidString: projectIDRaw)
+            else {
+                return nil
+            }
+
+            let isRunning = worker["isRunning"] as? Bool ?? false
+            let activeRequestID = parseUUID(worker["activeRequestID"] as? String)
+            let activeTicketID = parseUUID(worker["activeTicketID"] as? String)
+            return WorkerSnapshot(
+                projectID: resolvedProjectID,
+                isRunning: isRunning,
+                activeRequestID: activeRequestID,
+                activeTicketID: activeTicketID
+            )
+        }
     }
 
     private func resolveTicketID(payload: [String: Any]) -> UUID? {
@@ -316,6 +421,7 @@ actor CodexManager {
                 }
 
                 reconnectDelay = 1_000_000_000
+                await owner()?.refreshWorkerStateSnapshot()
 
                 while Task.isCancelled == false {
                     guard let line = readLine(from: fd) else {
@@ -596,6 +702,9 @@ final class CodexViewModel {
         switch event {
         case let .statusChanged(projectID, status):
             projectStatuses[projectID] = status
+
+        case let .ticketStarted(ticketID):
+            setTicketSending(true, for: ticketID)
 
         case let .ticketOutput(ticketID, line):
             var updatedOutput = ticketOutput[ticketID, default: ""]

@@ -126,6 +126,7 @@ private struct WorkerStatusEntry: Encodable {
     let projectID: String
     let isRunning: Bool
     let activeRequestID: String?
+    let activeTicketID: String?
 }
 
 private struct WorkerStatusResponse: Encodable {
@@ -546,22 +547,49 @@ private final class ControlServer: @unchecked Sendable {
                 throw SupervisorError.invalidRequest("workerStatus projectID must be a UUID.")
             }
             if let session = workers[projectID] {
+                let activeTicketID: String?
+                if
+                    let activeRequestID = session.activeRequestID,
+                    let activeRequest = activeRequests[activeRequestID]
+                {
+                    activeTicketID = activeRequest.ticketID.uuidString
+                } else {
+                    activeTicketID = nil
+                }
                 result.append(
                     WorkerStatusEntry(
                         projectID: projectID.uuidString,
                         isRunning: session.process.isRunning,
-                        activeRequestID: session.activeRequestID?.uuidString
+                        activeRequestID: session.activeRequestID?.uuidString,
+                        activeTicketID: activeTicketID
                     )
                 )
             } else {
-                result.append(WorkerStatusEntry(projectID: projectID.uuidString, isRunning: false, activeRequestID: nil))
+                result.append(
+                    WorkerStatusEntry(
+                        projectID: projectID.uuidString,
+                        isRunning: false,
+                        activeRequestID: nil,
+                        activeTicketID: nil
+                    )
+                )
             }
         } else {
             result = workers.map { projectID, session in
-                WorkerStatusEntry(
+                let activeTicketID: String?
+                if
+                    let activeRequestID = session.activeRequestID,
+                    let activeRequest = activeRequests[activeRequestID]
+                {
+                    activeTicketID = activeRequest.ticketID.uuidString
+                } else {
+                    activeTicketID = nil
+                }
+                return WorkerStatusEntry(
                     projectID: projectID.uuidString,
                     isRunning: session.process.isRunning,
-                    activeRequestID: session.activeRequestID?.uuidString
+                    activeRequestID: session.activeRequestID?.uuidString,
+                    activeTicketID: activeTicketID
                 )
             }
         }
