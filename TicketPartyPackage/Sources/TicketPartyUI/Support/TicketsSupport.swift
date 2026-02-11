@@ -53,6 +53,15 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
         }
     }
 
+    var isDone: Bool {
+        switch self {
+        case .done, .skipped, .duplicate:
+            true
+        case .inProgress, .review, .backlog, .blocked:
+            false
+        }
+    }
+
     init(stateID: UUID?) {
         guard let stateID else {
             self = .backlog

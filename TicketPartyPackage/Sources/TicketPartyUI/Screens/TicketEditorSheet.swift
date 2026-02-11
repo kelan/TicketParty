@@ -36,30 +36,28 @@ struct TicketEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Ticket") {
-                    TextField("Title", text: $draft.title)
-                        .focused($focusedField, equals: .title)
+                TextField("Title", text: $draft.title, axis: .vertical)
+                    .lineLimit(1...)
+                    .focused($focusedField, equals: .title)
 
-                    TextField("Description", text: $draft.description, axis: .vertical)
-                        .lineLimit(4 ... 8)
-                        .focused($focusedField, equals: .description)
+                TextField("Description", text: $draft.description, axis: .vertical)
+                    .lineLimit(4 ... 8)
+                    .focused($focusedField, equals: .description)
+
+                Picker("Project", selection: $draft.projectID) {
+                    Text("Select Project").tag(UUID?.none)
+                    ForEach(projects, id: \.id) { project in
+                        Text(project.name).tag(Optional(project.id))
+                    }
                 }
 
-                Section("Details") {
-                    Picker("Project", selection: $draft.projectID) {
-                        Text("Select Project").tag(UUID?.none)
-                        ForEach(projects, id: \.id) { project in
-                            Text(project.name).tag(Optional(project.id))
-                        }
-                    }
-
-                    Picker("Size", selection: $draft.size) {
-                        ForEach(TicketSize.allCases, id: \.self) { size in
-                            Text(size.title).tag(size)
-                        }
+                Picker("Size", selection: $draft.size) {
+                    ForEach(TicketSize.allCases, id: \.self) { size in
+                        Text(size.title).tag(size)
                     }
                 }
             }
+            .padding(16)
             .navigationTitle(title)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -102,4 +100,24 @@ struct TicketEditorSheet: View {
 
         draft.projectID = projects.first?.id
     }
+}
+
+#Preview("Ticket Editor Sheet") {
+    let sampleProjects = [
+        Project(name: "App Redesign", statusText: "Designing the new dashboard"),
+        Project(name: "Infra", statusText: "Scaling ticket ingestion"),
+    ]
+
+    TicketEditorSheet(
+        title: "New Ticket",
+        submitLabel: "Create",
+        projects: sampleProjects,
+        initialDraft: TicketDraft(
+            projectID: sampleProjects.first?.id,
+            title: "Tidy the settings screen",
+            description: "Group the toggles and update help copy.",
+            size: .requiresThinking
+        ),
+        onSubmit: { _ in }
+    )
 }

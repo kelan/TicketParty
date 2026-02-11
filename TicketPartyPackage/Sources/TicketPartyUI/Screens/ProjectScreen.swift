@@ -433,6 +433,14 @@ private struct ProjectWorkspaceView: View {
                     .font(.headline)
                     .fontWeight(.medium)
 
+                if ticket.ticketDescription.isEmpty == false && !ticket.quickStatus.isDone {
+                    Text(ticket.ticketDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                }
+
                 HStack(spacing: 8) {
                     Text(ticket.displayID)
                     Text(ticket.size.title)
