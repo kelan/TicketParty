@@ -547,6 +547,10 @@ private struct ProjectTicketDetailPanel: View {
                         let isSending = codexViewModel.ticketIsSending[ticket.id] == true
                         HStack(spacing: 8) {
                             Button("Send to Codex") {
+                                if ticket.quickStatus != .inProgress {
+                                    ticket.quickStatus = .inProgress
+                                    persist(ticket: ticket)
+                                }
                                 Task {
                                     await codexViewModel.send(ticket: ticket, project: project)
                                 }
