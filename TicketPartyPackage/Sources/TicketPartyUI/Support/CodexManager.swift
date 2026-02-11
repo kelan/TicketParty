@@ -803,7 +803,11 @@ actor CodexManager {
                     throw ManagerError.supervisorUnavailable("Failed to write subscribe request.")
                 }
 
-                guard let responseLine = readLine(from: fd), let responseData = responseLine.data(using: .utf8) else {
+                var streamBuffer = Data()
+                guard
+                    case let .line(responseLine) = readBufferedLine(from: fd, buffer: &streamBuffer),
+                    let responseData = responseLine.data(using: .utf8)
+                else {
                     throw ManagerError.supervisorUnavailable("Failed to read subscribe response.")
                 }
                 guard
@@ -816,12 +820,18 @@ actor CodexManager {
 
                 reconnectDelay = 1_000_000_000
 
-                while Task.isCancelled == false {
-                    guard let line = readLine(from: fd) else {
-                        break
+                subscriptionReadLoop: while Task.isCancelled == false {
+                    switch readBufferedLine(from: fd, buffer: &streamBuffer) {
+                    case let .line(line):
+                        guard let currentOwner = owner() else { return }
+                        await currentOwner.consumeSupervisorLine(line)
+
+                    case .timeout:
+                        continue
+
+                    case .eof, .error:
+                        break subscriptionReadLoop
                     }
-                    guard let currentOwner = owner() else { return }
-                    await currentOwner.consumeSupervisorLine(line)
                 }
             } catch {
                 await owner()?.handleSubscriptionDisconnected(projectID: projectID)
@@ -849,7 +859,11 @@ actor CodexManager {
             throw ManagerError.supervisorUnavailable("Failed to write request.")
         }
 
-        guard let responseLine = readLine(from: fd), let responseData = responseLine.data(using: .utf8) else {
+        var streamBuffer = Data()
+        guard
+            case let .line(responseLine) = readBufferedLine(from: fd, buffer: &streamBuffer),
+            let responseData = responseLine.data(using: .utf8)
+        else {
             throw ManagerError.supervisorUnavailable("Failed to read response.")
         }
 
@@ -914,40 +928,44 @@ actor CodexManager {
         return fd
     }
 
-    private nonisolated static func readLine(from fd: Int32, maxBytes: Int = 65_536) -> String? {
-        var data = Data()
-        var buffer = [UInt8](repeating: 0, count: 1_024)
-
-        while data.count < maxBytes {
-            let count = Darwin.read(fd, &buffer, buffer.count)
-            if count > 0 {
-                data.append(buffer, count: count)
-                if data.contains(0x0A) {
-                    break
-                }
-            } else if count == 0 {
-                break
-            } else if errno == EINTR {
-                continue
-            } else {
-                return nil
-            }
-        }
-
-        guard data.isEmpty == false else { return nil }
-
-        let lineData: Data
-        if let newlineIndex = data.firstIndex(of: 0x0A) {
-            var candidate = data.prefix(upTo: newlineIndex)
+    private nonisolated static func readBufferedLine(
+        from fd: Int32,
+        buffer: inout Data,
+        maxBytes: Int = 65_536
+    ) -> SocketReadResult {
+        if let newlineIndex = buffer.firstIndex(of: 0x0A) {
+            var candidate = buffer.prefix(upTo: newlineIndex)
+            buffer.removeSubrange(...newlineIndex)
             if candidate.last == 0x0D {
                 candidate = candidate.dropLast()
             }
-            lineData = Data(candidate)
-        } else {
-            lineData = data
+            return .line(String(decoding: candidate, as: UTF8.self))
         }
 
-        return String(decoding: lineData, as: UTF8.self)
+        var chunk = [UInt8](repeating: 0, count: 1_024)
+        let count = Darwin.read(fd, &chunk, chunk.count)
+
+        if count > 0 {
+            buffer.append(chunk, count: count)
+            if buffer.count > maxBytes {
+                return .error
+            }
+            return readBufferedLine(from: fd, buffer: &buffer, maxBytes: maxBytes)
+        }
+
+        if count == 0 {
+            return .eof
+        }
+
+        if errno == EINTR {
+            return readBufferedLine(from: fd, buffer: &buffer, maxBytes: maxBytes)
+        }
+
+        if errno == EAGAIN || errno == EWOULDBLOCK {
+            return .timeout
+        }
+
+        return .error
     }
 
     private nonisolated static func writeAll(_ data: Data, to fd: Int32) -> Bool {
@@ -1022,6 +1040,13 @@ actor CodexManager {
 
     private nonisolated static func isBusyInFlightMessage(_ message: String) -> Bool {
         message.localizedCaseInsensitiveContains("already has in-flight request")
+    }
+
+    private enum SocketReadResult {
+        case line(String)
+        case timeout
+        case eof
+        case error
     }
 }
 
