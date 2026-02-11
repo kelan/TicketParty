@@ -15,11 +15,11 @@ struct ProjectDetailView: View {
     @State private var selectedTicketID: UUID?
     @State private var selectionAnchorTicketID: UUID?
     @State private var selectedSizeFilter: TicketSize?
-    @State private var selectedStateScope: TicketStateScope = .all
+    @State private var selectedStateScope: TicketStateScope = .overview
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
-    private let recentDoneLimit = 5
+    private let overviewDoneLimit = 5
 
     init(project: Project, onRequestNewTicket: @escaping (UUID?) -> Void = { _ in }) {
         self.project = project
@@ -51,25 +51,34 @@ struct ProjectDetailView: View {
     }
 
     private var visibleTickets: [Ticket] {
-        recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit) +
-            inProgressTickets(in: scopedAndFilteredTickets) +
-            backlogTickets(in: scopedAndFilteredTickets)
+        visibleRecentDoneTickets +
+            visibleInProgressTickets +
+            visibleBacklogTickets +
+            visibleOtherTickets
     }
 
     private var visibleInProgressTickets: [Ticket] {
-        inProgressTickets(in: scopedAndFilteredTickets)
+        guard selectedStateScope != .allDone else { return [] }
+        return inProgressTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleRecentDoneTickets: [Ticket] {
-        recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit)
+        switch selectedStateScope {
+        case .overview:
+            return doneTickets(in: scopedAndFilteredTickets, limit: overviewDoneLimit)
+        case .allDone, .everything:
+            return doneTickets(in: scopedAndFilteredTickets, limit: nil)
+        }
     }
 
     private var visibleBacklogTickets: [Ticket] {
-        backlogTickets(in: scopedAndFilteredTickets)
+        guard selectedStateScope != .allDone else { return [] }
+        return backlogTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleOtherTickets: [Ticket] {
-        otherTickets(in: scopedAndFilteredTickets)
+        guard selectedStateScope != .allDone else { return [] }
+        return otherTickets(in: scopedAndFilteredTickets)
     }
 
     private var isBacklogReorderingEnabled: Bool {
@@ -108,6 +117,7 @@ struct ProjectDetailView: View {
             selectedTicketID: $selectedTicketID,
             selectedSizeFilter: $selectedSizeFilter,
             selectedStateScope: $selectedStateScope,
+            doneSectionTitle: selectedStateScope.doneSectionTitle,
             searchText: $searchText,
             selectedTicket: selectedTicket,
             isBacklogReorderingEnabled: isBacklogReorderingEnabled,
@@ -324,14 +334,16 @@ struct ProjectDetailView: View {
             .filter { $0.quickStatus == .inProgress }
     }
 
-    private func recentDoneTickets(in tickets: [Ticket], limit: Int) -> [Ticket] {
-        Array(
-            tickets
-                .filter { $0.quickStatus.isDone }
-                .sorted(by: sortByMostRecentlyUpdated)
-                .prefix(limit)
-                .reversed()
-        )
+    private func doneTickets(in tickets: [Ticket], limit: Int?) -> [Ticket] {
+        let sortedDoneTickets = tickets
+            .filter { $0.quickStatus.isDone }
+            .sorted(by: sortByMostRecentlyUpdated)
+
+        if let limit {
+            return Array(sortedDoneTickets.prefix(limit).reversed())
+        }
+
+        return Array(sortedDoneTickets.reversed())
     }
 
     private func backlogTickets(in tickets: [Ticket]) -> [Ticket] {
@@ -371,6 +383,7 @@ private struct ProjectWorkspaceView: View {
     @Binding var selectedTicketID: UUID?
     @Binding var selectedSizeFilter: TicketSize?
     @Binding var selectedStateScope: TicketStateScope
+    let doneSectionTitle: String
     @Binding var searchText: String
     let selectedTicket: Ticket?
     let isBacklogReorderingEnabled: Bool
@@ -397,7 +410,7 @@ private struct ProjectWorkspaceView: View {
                                 .tag(ticket.id)
                         }
                     } header: {
-                        Text("Recently Done")
+                        Text(doneSectionTitle)
                             .font(.title2)
                     }
                 }
@@ -504,10 +517,9 @@ private struct ProjectWorkspaceView: View {
 }
 
 private enum TicketStateScope: String, CaseIterable, Identifiable {
-    case all
-    case backlog
-    case inProgress
-    case done
+    case overview
+    case allDone
+    case everything
 
     var id: String {
         rawValue
@@ -515,26 +527,31 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all:
-            return "All States"
-        case .backlog:
-            return "Backlog (incl. Blocked)"
-        case .inProgress:
-            return "In Progress"
-        case .done:
+        case .overview:
+            return "Overview"
+        case .allDone:
+            return "All Done"
+        case .everything:
+            return "Everything"
+        }
+    }
+
+    var doneSectionTitle: String {
+        switch self {
+        case .overview:
+            return "Recently Done"
+        case .allDone:
+            return "All Done"
+        case .everything:
             return "Done"
         }
     }
 
     func matches(_ status: TicketQuickStatus) -> Bool {
         switch self {
-        case .all:
+        case .overview, .everything:
             return true
-        case .backlog:
-            return status.isBacklogSortable
-        case .inProgress:
-            return status == .inProgress
-        case .done:
+        case .allDone:
             return status.isDone
         }
     }
@@ -555,7 +572,7 @@ private struct ProjectFiltersPanel: View {
                     Text(scope.title).tag(scope)
                 }
             }
-            .pickerStyle(.menu)
+            .pickerStyle(.segmented)
 
             Picker("Size", selection: $selectedSizeFilter) {
                 Text("All Sizes").tag(TicketSize?.none)
