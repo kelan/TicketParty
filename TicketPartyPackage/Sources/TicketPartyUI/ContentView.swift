@@ -14,13 +14,18 @@ public struct TicketPartyRootView: View {
     @Query(sort: [SortDescriptor(\Project.updatedAt, order: .forward)]) private var projects: [Project]
     @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse)]) private var tickets: [Ticket]
 
-    @State private var selection: SidebarSelection? = .activity
+    @State private var selection: SidebarSelection?
     @State private var isPresentingCreateProject = false
     @State private var isPresentingCreateTicket = false
     @State private var ticketDraft = TicketDraft()
     @State private var codexViewModel = CodexViewModel()
+    private let selectionStore: NavigationSelectionStore
 
-    public init() {}
+    public init() {
+        let selectionStore = NavigationSelectionStore()
+        self.selectionStore = selectionStore
+        _selection = State(initialValue: selectionStore.loadSidebarSelection() ?? .activity)
+    }
 
     public var body: some View {
         NavigationSplitView {
@@ -99,8 +104,16 @@ public struct TicketPartyRootView: View {
 
             case let .project(projectID):
                 if let project = projects.first(where: { $0.id == projectID }) {
-                    ProjectDetailView(project: project, onRequestNewTicket: presentNewTicketSheet)
-                        .id(project.id)
+                    ProjectDetailView(
+                        project: project,
+                        initialSelectedTicketID: selectionStore.loadSelectedTicketID(for: project.id),
+                        onSelectedTicketChange: { ticketID in
+                            guard let ticketID else { return }
+                            selectionStore.saveSelectedTicketID(ticketID, for: project.id)
+                        },
+                        onRequestNewTicket: presentNewTicketSheet
+                    )
+                    .id(project.id)
                 } else {
                     ContentUnavailableView("Project Not Found", systemImage: "questionmark.folder")
                 }
@@ -134,6 +147,9 @@ public struct TicketPartyRootView: View {
             {
                 self.selection = .activity
             }
+        }
+        .onChange(of: selection) { _, newSelection in
+            selectionStore.saveSidebarSelection(newSelection)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyNewTicketRequested)) { _ in
             presentNewTicketSheet()

@@ -10,6 +10,7 @@ struct ProjectDetailView: View {
     @Query(sort: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]) private var allTickets: [Ticket]
 
     @Bindable var project: Project
+    let onSelectedTicketChange: (UUID?) -> Void
     let onRequestNewTicket: (UUID?) -> Void
 
     @State private var selectedTicketID: UUID?
@@ -24,12 +25,16 @@ struct ProjectDetailView: View {
 
     init(
         project: Project,
+        initialSelectedTicketID: UUID? = nil,
+        onSelectedTicketChange: @escaping (UUID?) -> Void = { _ in },
         onRequestNewTicket: @escaping (UUID?) -> Void = { _ in },
         isPreview: Bool = false
     ) {
         self.project = project
+        self.onSelectedTicketChange = onSelectedTicketChange
         self.onRequestNewTicket = onRequestNewTicket
         self.isPreview = isPreview
+        _selectedTicketID = State(initialValue: initialSelectedTicketID)
     }
 
     private var tickets: [Ticket] {
@@ -219,6 +224,7 @@ struct ProjectDetailView: View {
         }
         .onChange(of: selectedTicketID) { _, newID in
             guard isPreview == false else { return }
+            onSelectedTicketChange(newID)
             guard let newID else { return }
             selectionAnchorTicketID = newID
         }

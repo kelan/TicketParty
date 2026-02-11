@@ -298,6 +298,43 @@ struct TicketPartyTests {
         #expect(payload["ticketDescription"] == "Commit context description")
     }
 
+    @Test
+    func navigationSelectionStore_roundTripsSidebarAndTicketSelection() throws {
+        let suiteName = "TicketPartyTests.NavigationSelectionStore.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let projectID = UUID()
+        let ticketID = UUID()
+        let store = NavigationSelectionStore(userDefaults: defaults)
+
+        store.saveSidebarSelection(.project(projectID))
+        store.saveSelectedTicketID(ticketID, for: projectID)
+
+        let reloadedStore = NavigationSelectionStore(userDefaults: defaults)
+        #expect(reloadedStore.loadSidebarSelection() == .project(projectID))
+        #expect(reloadedStore.loadSelectedTicketID(for: projectID) == ticketID)
+    }
+
+    @Test
+    func navigationSelectionStore_clearsTicketSelectionForProject() throws {
+        let suiteName = "TicketPartyTests.NavigationSelectionStore.Clear.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let projectID = UUID()
+        let store = NavigationSelectionStore(userDefaults: defaults)
+
+        store.saveSelectedTicketID(UUID(), for: projectID)
+        store.saveSelectedTicketID(nil, for: projectID)
+
+        #expect(store.loadSelectedTicketID(for: projectID) == nil)
+    }
+
     private func fetchRun(runID: UUID) throws -> TicketTranscriptRun? {
         let container = try TicketPartyPersistence.makeSharedContainer()
         let context = ModelContext(container)
