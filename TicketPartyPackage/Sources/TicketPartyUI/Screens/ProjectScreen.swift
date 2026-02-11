@@ -13,6 +13,7 @@ struct ProjectDetailView: View {
 
     @State private var selectedTicketID: UUID?
     @State private var selectedPriorityFilter: TicketPriority?
+    @State private var selectedStateScope: TicketStateScope = .allStates
     @State private var showHighPriorityOnly = false
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
@@ -34,14 +35,18 @@ struct ProjectDetailView: View {
     private var filteredTickets: [Ticket] {
         tickets.filter { ticket in
             let priorityMatches = selectedPriorityFilter == nil || ticket.priority == selectedPriorityFilter
+            let stateMatches = selectedStateScope.matches(ticket.quickStatus)
             let highPriorityMatches = showHighPriorityOnly == false || ticket.priority == .high || ticket.priority == .urgent
             let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
-            return priorityMatches && highPriorityMatches && searchMatches
+            return priorityMatches && stateMatches && highPriorityMatches && searchMatches
         }
     }
 
     private var isManualSortEnabled: Bool {
-        selectedPriorityFilter == nil && showHighPriorityOnly == false && searchText.isEmpty
+        selectedPriorityFilter == nil &&
+            selectedStateScope == .allStates &&
+            showHighPriorityOnly == false &&
+            searchText.isEmpty
     }
 
     private var selectedTicket: Ticket? {
@@ -59,6 +64,7 @@ struct ProjectDetailView: View {
             filteredTickets: filteredTickets,
             selectedTicketID: $selectedTicketID,
             selectedPriorityFilter: $selectedPriorityFilter,
+            selectedStateScope: $selectedStateScope,
             showHighPriorityOnly: $showHighPriorityOnly,
             searchText: $searchText,
             selectedTicket: selectedTicket,
@@ -237,6 +243,7 @@ private struct ProjectWorkspaceView: View {
     let filteredTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
     @Binding var selectedPriorityFilter: TicketPriority?
+    @Binding var selectedStateScope: TicketStateScope
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
     let selectedTicket: Ticket?
@@ -247,6 +254,7 @@ private struct ProjectWorkspaceView: View {
         HStack(spacing: 0) {
             ProjectFiltersPanel(
                 selectedPriorityFilter: $selectedPriorityFilter,
+                selectedStateScope: $selectedStateScope,
                 showHighPriorityOnly: $showHighPriorityOnly,
                 searchText: $searchText
             )
@@ -283,7 +291,7 @@ private struct ProjectWorkspaceView: View {
         }
         .overlay(alignment: .bottomLeading) {
             if isManualSortEnabled == false {
-                Text("Clear filters and search to manually reorder tickets.")
+                Text("Clear filters, state scope, and search to manually reorder tickets.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
@@ -292,8 +300,41 @@ private struct ProjectWorkspaceView: View {
     }
 }
 
+private enum TicketStateScope: String, CaseIterable, Identifiable {
+    case allStates
+    case remaining
+    case available
+
+    var id: String {
+        rawValue
+    }
+
+    var title: String {
+        switch self {
+        case .allStates:
+            return "All States"
+        case .remaining:
+            return "Remaining"
+        case .available:
+            return "Available"
+        }
+    }
+
+    func matches(_ status: TicketQuickStatus) -> Bool {
+        switch self {
+        case .allStates:
+            return true
+        case .remaining:
+            return status != .done
+        case .available:
+            return status == .backlog || status == .inProgress || status == .review
+        }
+    }
+}
+
 private struct ProjectFiltersPanel: View {
     @Binding var selectedPriorityFilter: TicketPriority?
+    @Binding var selectedStateScope: TicketStateScope
     @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
@@ -301,6 +342,13 @@ private struct ProjectFiltersPanel: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Filters")
                 .font(.headline)
+
+            Picker("States", selection: $selectedStateScope) {
+                ForEach(TicketStateScope.allCases, id: \.self) { scope in
+                    Text(scope.title).tag(scope)
+                }
+            }
+            .pickerStyle(.menu)
 
             Picker("Priority", selection: $selectedPriorityFilter) {
                 Text("All Priorities").tag(TicketPriority?.none)
@@ -453,6 +501,7 @@ private struct TicketStatusQuickActions: View {
                     Capsule()
                         .stroke(status.tintColor.opacity(status == currentStatus ? 0.9 : 0.5), lineWidth: 1)
                 }
+                .contentShape(Capsule())
                 .controlSize(.small)
             }
         }
