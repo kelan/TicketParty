@@ -17,7 +17,7 @@ private func run(arguments: [String]) throws {
 //            print("No tickets found.")
 //        } else {
 //            for ticket in tickets {
-//                print("\(ticket.displayID)\t\(ticket.title)\t\(ticket.priority)")
+//                print("\(ticket.displayID)\t\(ticket.title)\t\(ticket.size)")
 //            }
 //        }
 //    case ("ticket", "create"):

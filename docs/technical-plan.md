@@ -25,7 +25,7 @@
 ### Core Tables
 | Entity | Purpose | Core Fields | Constraints and Query Hints |
 | --- | --- | --- | --- |
-| `Ticket` | Main work item and current-state projection | `id`, `ticketNumber`, `displayID`, `title`, `description`, `priority`, `severity`, `currentWorkflow`, `currentState`, `currentStateChangedAt`, `assigneeID`, `createdAt`, `updatedAt`, `closedAt?`, `archivedAt?` | Unique: `id`, `ticketNumber`, `displayID`; index `currentState`, `assigneeID`, `updatedAt`, `archivedAt` |
+| `Ticket` | Main work item and current-state projection | `id`, `ticketNumber`, `displayID`, `title`, `description`, `size`, `severity`, `currentWorkflow`, `currentState`, `currentStateChangedAt`, `assigneeID`, `createdAt`, `updatedAt`, `closedAt?`, `archivedAt?` | Unique: `id`, `ticketNumber`, `displayID`; index `currentState`, `assigneeID`, `updatedAt`, `archivedAt` |
 | `TicketStateTransition` | Immutable state transition history | `id`, `ticketID`, `workflow`, `fromState`, `toState`, `transitionedAt`, `actorType`, `actorID`, `reason?`, `metadataJSON` | Index `ticketID + transitionedAt DESC`; index `toState + transitionedAt`; append-only |
 | `TicketEvent` | Generic immutable audit/event log | `id`, `ticketID`, `eventType`, `actorType`, `actorID`, `timestamp`, `payloadJSON` | Index `ticketID + timestamp`; index `eventType + timestamp` |
 | `Note` | Long-form durable context | `id`, `ticketID`, `body`, `authorType`, `createdAt`, `updatedAt` | Index `ticketID + updatedAt` |
@@ -44,7 +44,7 @@
 - `Comment` reply threading: optional self-reference through `inReplyToCommentID`.
 
 ### Enum Domains
-- `priority`: `low`, `medium`, `high`, `urgent`.
+- `size`: `quick_tweak`, `straightforward_feature`, `requires_thinking`, `major_refactor`.
 - `severity`: `trivial`, `minor`, `major`, `critical`.
 - `workflow` (code-defined): start with `standard`; extend in code only.
 - `state` (code-defined for `standard`): `backlog`, `ready`, `in_progress`, `review`, `done`.

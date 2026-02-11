@@ -43,7 +43,7 @@ public final class Ticket {
     public var orderKey: Int64 = 0
     public var title: String
     public var ticketDescription: String
-    public var priority: TicketPriority
+    public var size: TicketSize = TicketSize.straightforwardFeature
     public var severity: TicketSeverity
     public var workflowID: UUID?
     public var stateID: UUID?
@@ -61,7 +61,7 @@ public final class Ticket {
         orderKey: Int64 = 0,
         title: String,
         description: String = "",
-        priority: TicketPriority = .medium,
+        size: TicketSize = .straightforwardFeature,
         severity: TicketSeverity = .major,
         workflowID: UUID? = nil,
         stateID: UUID? = nil,
@@ -78,7 +78,7 @@ public final class Ticket {
         self.orderKey = orderKey
         self.title = title
         ticketDescription = description
-        self.priority = priority
+        self.size = size
         self.severity = severity
         self.workflowID = workflowID
         self.stateID = stateID

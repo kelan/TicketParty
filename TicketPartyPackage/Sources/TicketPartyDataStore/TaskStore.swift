@@ -46,7 +46,7 @@ public enum TicketPartyTicketStore {
             id: ticket.id,
             displayID: ticket.displayID,
             title: ticket.title,
-            priority: ticket.priority.rawValue,
+            size: ticket.size.rawValue,
             severity: ticket.severity.rawValue,
             updatedAt: ticket.updatedAt
         )

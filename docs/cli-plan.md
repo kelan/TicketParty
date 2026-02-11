@@ -52,7 +52,7 @@
 - Emit actionable error with exit code.
 
 ## Command Surface (MVP)
-- `tp create --title --workflow --state --priority`
+- `tp create --title --workflow --state --size`
 - `tp list --state --assignee --needs-response --json`
 - `tp show TT-42 --json`
 - `tp assign TT-42 --agent coder-1`

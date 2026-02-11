@@ -7,11 +7,11 @@
 
 import Foundation
 
-public enum TicketPriority: String, Codable, CaseIterable, Sendable {
-    case low
-    case medium
-    case high
-    case urgent
+public enum TicketSize: String, Codable, CaseIterable, Sendable {
+    case quickTweak = "quick_tweak"
+    case straightforwardFeature = "straightforward_feature"
+    case requiresThinking = "requires_thinking"
+    case majorRefactor = "major_refactor"
 }
 
 public enum TicketSeverity: String, Codable, CaseIterable, Sendable {
@@ -72,7 +72,7 @@ public struct TicketSummary: Codable, Hashable, Sendable {
     public let id: UUID
     public let displayID: String
     public let title: String
-    public let priority: String
+    public let size: String
     public let severity: String
     public let updatedAt: Date
 
@@ -80,14 +80,14 @@ public struct TicketSummary: Codable, Hashable, Sendable {
         id: UUID,
         displayID: String,
         title: String,
-        priority: String,
+        size: String,
         severity: String,
         updatedAt: Date
     ) {
         self.id = id
         self.displayID = displayID
         self.title = title
-        self.priority = priority
+        self.size = size
         self.severity = severity
         self.updatedAt = updatedAt
     }
@@ -99,7 +99,7 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
     public let displayID: String
     public let title: String
     public let description: String
-    public let priority: TicketPriority
+    public let size: TicketSize
     public let severity: TicketSeverity
     public let workflowID: UUID?
     public let stateID: UUID?
@@ -115,7 +115,7 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
         displayID: String,
         title: String,
         description: String,
-        priority: TicketPriority,
+        size: TicketSize,
         severity: TicketSeverity,
         workflowID: UUID?,
         stateID: UUID?,
@@ -130,7 +130,7 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
         self.displayID = displayID
         self.title = title
         self.description = description
-        self.priority = priority
+        self.size = size
         self.severity = severity
         self.workflowID = workflowID
         self.stateID = stateID

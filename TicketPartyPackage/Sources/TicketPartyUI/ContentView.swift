@@ -165,7 +165,7 @@ public struct TicketPartyRootView: View {
             orderKey: nextOrderKey,
             title: normalizedDraft.title,
             description: normalizedDraft.description,
-            priority: normalizedDraft.priority,
+            size: normalizedDraft.size,
             severity: normalizedDraft.severity,
             stateID: TicketQuickStatus.backlog.stateID,
             createdAt: .now,
@@ -231,8 +231,8 @@ public struct TicketPartyRootView: View {
                         orderKey: Int64(ticketNumber) * TicketOrdering.keyStep,
                         title: ticket.title,
                         description: ticket.latestNote,
-                        priority: ticket.priority.ticketPriority,
-                        severity: ticket.priority.ticketSeverity,
+                        size: ticket.size.ticketSize,
+                        severity: ticket.size.ticketSeverity,
                         stateID: ticket.state.ticketQuickStatus.stateID
                     )
                 )

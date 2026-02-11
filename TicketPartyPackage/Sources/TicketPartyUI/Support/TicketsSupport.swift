@@ -89,7 +89,7 @@ struct TicketDraft: Equatable {
     var projectID: UUID?
     var title: String = ""
     var description: String = ""
-    var priority: TicketPriority = .medium
+    var size: TicketSize = .straightforwardFeature
     var severity: TicketSeverity = .major
 
     var normalized: TicketDraft {
@@ -97,7 +97,7 @@ struct TicketDraft: Equatable {
             projectID: projectID,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            priority: priority,
+            size: size,
             severity: severity
         )
     }
@@ -111,13 +111,13 @@ struct TicketDraft: Equatable {
         projectID: UUID? = nil,
         title: String = "",
         description: String = "",
-        priority: TicketPriority = .medium,
+        size: TicketSize = .straightforwardFeature,
         severity: TicketSeverity = .major
     ) {
         self.projectID = projectID
         self.title = title
         self.description = description
-        self.priority = priority
+        self.size = size
         self.severity = severity
     }
 
@@ -125,14 +125,23 @@ struct TicketDraft: Equatable {
         projectID = ticket.projectID
         title = ticket.title
         description = ticket.ticketDescription
-        priority = ticket.priority
+        size = ticket.size
         severity = ticket.severity
     }
 }
 
-extension TicketPriority {
+extension TicketSize {
     var title: String {
-        rawValue.capitalized
+        switch self {
+        case .quickTweak:
+            return "Quick Tweak"
+        case .straightforwardFeature:
+            return "Straightforward Feature"
+        case .requiresThinking:
+            return "Requires Thinking"
+        case .majorRefactor:
+            return "Major Refactor"
+        }
     }
 }
 

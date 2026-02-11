@@ -12,9 +12,8 @@ struct ProjectDetailView: View {
     let onRequestNewTicket: (UUID?) -> Void
 
     @State private var selectedTicketID: UUID?
-    @State private var selectedPriorityFilter: TicketPriority?
+    @State private var selectedSizeFilter: TicketSize?
     @State private var selectedStateScope: TicketStateScope = .remaining
-    @State private var showHighPriorityOnly = false
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
@@ -34,18 +33,16 @@ struct ProjectDetailView: View {
 
     private var filteredTickets: [Ticket] {
         tickets.filter { ticket in
-            let priorityMatches = selectedPriorityFilter == nil || ticket.priority == selectedPriorityFilter
+            let sizeMatches = selectedSizeFilter == nil || ticket.size == selectedSizeFilter
             let stateMatches = selectedStateScope.matches(ticket.quickStatus)
-            let highPriorityMatches = showHighPriorityOnly == false || ticket.priority == .high || ticket.priority == .urgent
             let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
-            return priorityMatches && stateMatches && highPriorityMatches && searchMatches
+            return sizeMatches && stateMatches && searchMatches
         }
     }
 
     private var isManualSortEnabled: Bool {
-        selectedPriorityFilter == nil &&
+        selectedSizeFilter == nil &&
             selectedStateScope == .allStates &&
-            showHighPriorityOnly == false &&
             searchText.isEmpty
     }
 
@@ -63,9 +60,8 @@ struct ProjectDetailView: View {
             project: project,
             filteredTickets: filteredTickets,
             selectedTicketID: $selectedTicketID,
-            selectedPriorityFilter: $selectedPriorityFilter,
+            selectedSizeFilter: $selectedSizeFilter,
             selectedStateScope: $selectedStateScope,
-            showHighPriorityOnly: $showHighPriorityOnly,
             searchText: $searchText,
             selectedTicket: selectedTicket,
             isManualSortEnabled: isManualSortEnabled,
@@ -175,7 +171,7 @@ struct ProjectDetailView: View {
         ticket.projectID = draft.projectID
         ticket.title = draft.title
         ticket.ticketDescription = draft.description
-        ticket.priority = draft.priority
+        ticket.size = draft.size
         ticket.severity = draft.severity
         ticket.updatedAt = .now
 
@@ -242,9 +238,8 @@ private struct ProjectWorkspaceView: View {
     let project: Project
     let filteredTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
-    @Binding var selectedPriorityFilter: TicketPriority?
+    @Binding var selectedSizeFilter: TicketSize?
     @Binding var selectedStateScope: TicketStateScope
-    @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
     let selectedTicket: Ticket?
     let isManualSortEnabled: Bool
@@ -253,9 +248,8 @@ private struct ProjectWorkspaceView: View {
     var body: some View {
         HStack(spacing: 0) {
             ProjectFiltersPanel(
-                selectedPriorityFilter: $selectedPriorityFilter,
+                selectedSizeFilter: $selectedSizeFilter,
                 selectedStateScope: $selectedStateScope,
-                showHighPriorityOnly: $showHighPriorityOnly,
                 searchText: $searchText
             )
             .frame(width: 220)
@@ -271,7 +265,7 @@ private struct ProjectWorkspaceView: View {
 
                             HStack(spacing: 8) {
                                 Text(ticket.displayID)
-                                Text(ticket.priority.title)
+                                Text(ticket.size.title)
                                 Text(ticket.severity.title)
                             }
                             .font(.caption)
@@ -338,9 +332,8 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
 }
 
 private struct ProjectFiltersPanel: View {
-    @Binding var selectedPriorityFilter: TicketPriority?
+    @Binding var selectedSizeFilter: TicketSize?
     @Binding var selectedStateScope: TicketStateScope
-    @Binding var showHighPriorityOnly: Bool
     @Binding var searchText: String
 
     var body: some View {
@@ -355,15 +348,13 @@ private struct ProjectFiltersPanel: View {
             }
             .pickerStyle(.menu)
 
-            Picker("Priority", selection: $selectedPriorityFilter) {
-                Text("All Priorities").tag(TicketPriority?.none)
-                ForEach(TicketPriority.allCases, id: \.self) { priority in
-                    Text(priority.title).tag(Optional(priority))
+            Picker("Size", selection: $selectedSizeFilter) {
+                Text("All Sizes").tag(TicketSize?.none)
+                ForEach(TicketSize.allCases, id: \.self) { size in
+                    Text(size.title).tag(Optional(size))
                 }
             }
             .pickerStyle(.menu)
-
-            Toggle("High/Urgent Only", isOn: $showHighPriorityOnly)
 
             TextField("Search tickets", text: $searchText)
 
@@ -398,9 +389,9 @@ private struct ProjectTicketDetailPanel: View {
                     }
 
                     Section("Details") {
-                        Picker("Priority", selection: priorityBinding(for: ticket)) {
-                            ForEach(TicketPriority.allCases, id: \.self) { priority in
-                                Text(priority.title).tag(priority)
+                        Picker("Size", selection: sizeBinding(for: ticket)) {
+                            ForEach(TicketSize.allCases, id: \.self) { size in
+                                Text(size.title).tag(size)
                             }
                         }
 
@@ -454,11 +445,11 @@ private struct ProjectTicketDetailPanel: View {
         }
     }
 
-    private func priorityBinding(for ticket: Ticket) -> Binding<TicketPriority> {
+    private func sizeBinding(for ticket: Ticket) -> Binding<TicketSize> {
         Binding(
-            get: { ticket.priority },
-            set: { newPriority in
-                ticket.priority = newPriority
+            get: { ticket.size },
+            set: { newSize in
+                ticket.size = newSize
                 persist(ticket: ticket)
             }
         )
@@ -683,8 +674,8 @@ private enum ProjectPreviewData {
                 orderKey: Int64(index + 1) * TicketOrdering.keyStep,
                 title: ticket.title,
                 description: ticket.latestNote,
-                priority: ticket.priority.ticketPriority,
-                severity: ticket.priority.ticketSeverity,
+                size: ticket.size.ticketSize,
+                severity: ticket.size.ticketSeverity,
                 stateID: ticket.state.ticketQuickStatus.stateID
             )
         }

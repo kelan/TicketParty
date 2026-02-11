@@ -26,7 +26,7 @@ This is not single-person TODO app.
 
 ## Ticket Model Requirements
 - Tickets resemble issue tracker tickets:
-- Stable ID (`TT-123` style), title, description, severity/priority, workflow/state, assignee, timestamps.
+- Stable ID (`TT-123` style), title, description, severity/size, workflow/state, assignee, timestamps.
 - Ticket-level notes for long-form evolving context.
 - Comments with lightweight structure:
 - `type`: update, question, answer, decision, status-change.

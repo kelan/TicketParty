@@ -5,16 +5,16 @@ import TicketPartyModels
 
 struct OverallKanbanView: View {
     let projects: [Project]
-    private let priorities = TicketPriority.allCases
+    private let sizes = TicketSize.allCases
 
     @Query(sort: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]) private var tickets: [Ticket]
 
-    private func tickets(for project: Project, priority: TicketPriority) -> [Ticket] {
+    private func tickets(for project: Project, size: TicketSize) -> [Ticket] {
         tickets.filter { ticket in
             ticket.archivedAt == nil &&
                 ticket.closedAt == nil &&
                 ticket.projectID == project.id &&
-                ticket.priority == priority
+                ticket.size == size
         }
     }
 
@@ -26,8 +26,8 @@ struct OverallKanbanView: View {
                         .font(.caption.weight(.semibold))
                         .frame(width: 180, alignment: .leading)
 
-                    ForEach(priorities, id: \.self) { priority in
-                        Text(priority.title)
+                    ForEach(sizes, id: \.self) { size in
+                        Text(size.title)
                             .font(.caption.weight(.semibold))
                             .frame(width: 220, alignment: .leading)
                     }
@@ -44,8 +44,8 @@ struct OverallKanbanView: View {
                         }
                         .frame(width: 180, alignment: .leading)
 
-                        ForEach(priorities, id: \.self) { priority in
-                            TicketKanbanCell(tickets: tickets(for: project, priority: priority))
+                        ForEach(sizes, id: \.self) { size in
+                            TicketKanbanCell(tickets: tickets(for: project, size: size))
                                 .frame(width: 220, alignment: .leading)
                         }
                     }

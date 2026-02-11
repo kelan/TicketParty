@@ -53,9 +53,9 @@ struct TicketEditorSheet: View {
                         }
                     }
 
-                    Picker("Priority", selection: $draft.priority) {
-                        ForEach(TicketPriority.allCases, id: \.self) { priority in
-                            Text(priority.title).tag(priority)
+                    Picker("Size", selection: $draft.size) {
+                        ForEach(TicketSize.allCases, id: \.self) { size in
+                            Text(size.title).tag(size)
                         }
                     }
 

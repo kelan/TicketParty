@@ -42,35 +42,49 @@ enum StubTicketState: String, CaseIterable, Identifiable {
     }
 }
 
-enum StubPriority: String {
-    case low
-    case medium
-    case high
+enum StubSize: String {
+    case quickTweak = "quick_tweak"
+    case straightforwardFeature = "straightforward_feature"
+    case requiresThinking = "requires_thinking"
+    case majorRefactor = "major_refactor"
 
     var title: String {
-        rawValue.capitalized
+        switch self {
+        case .quickTweak:
+            return "Quick Tweak"
+        case .straightforwardFeature:
+            return "Straightforward Feature"
+        case .requiresThinking:
+            return "Requires Thinking"
+        case .majorRefactor:
+            return "Major Refactor"
+        }
     }
 }
 
-extension StubPriority {
-    var ticketPriority: TicketPriority {
+extension StubSize {
+    var ticketSize: TicketSize {
         switch self {
-        case .low:
-            return .low
-        case .medium:
-            return .medium
-        case .high:
-            return .high
+        case .quickTweak:
+            return .quickTweak
+        case .straightforwardFeature:
+            return .straightforwardFeature
+        case .requiresThinking:
+            return .requiresThinking
+        case .majorRefactor:
+            return .majorRefactor
         }
     }
 
     var ticketSeverity: TicketSeverity {
         switch self {
-        case .low:
+        case .quickTweak:
             return .minor
-        case .medium:
+        case .straightforwardFeature:
             return .major
-        case .high:
+        case .requiresThinking:
+            return .major
+        case .majorRefactor:
             return .critical
         }
     }
@@ -101,7 +115,7 @@ struct StubTicket: Identifiable, Hashable {
     let id: String
     let title: String
     let state: StubTicketState
-    let priority: StubPriority
+    let size: StubSize
     let assignee: String
     let latestNote: String
 }
@@ -162,7 +176,7 @@ enum SampleData {
                 id: "1",
                 title: "Plan release checklist",
                 state: .review,
-                priority: .high,
+                size: .requiresThinking,
                 assignee: "Kelan",
                 latestNote: "Checklist drafted and in stakeholder review."
             ),
@@ -170,7 +184,7 @@ enum SampleData {
                 id: "2",
                 title: "Revise pricing page copy",
                 state: .inProgress,
-                priority: .medium,
+                size: .straightforwardFeature,
                 assignee: "Avery",
                 latestNote: "Legal language updates still pending."
             ),
@@ -178,7 +192,7 @@ enum SampleData {
                 id: "3",
                 title: "Fix attribution mismatch",
                 state: .blocked,
-                priority: .high,
+                size: .majorRefactor,
                 assignee: "Maya",
                 latestNote: "Blocked by delayed warehouse replay job."
             ),
@@ -186,7 +200,7 @@ enum SampleData {
                 id: "4",
                 title: "New referral CTA",
                 state: .backlog,
-                priority: .low,
+                size: .quickTweak,
                 assignee: "Riley",
                 latestNote: "Pending design exploration."
             ),
@@ -197,7 +211,7 @@ enum SampleData {
                 id: "\(project.id.uuidString)_\(ticket.id)",
                 title: ticket.title,
                 state: ticket.state,
-                priority: ticket.priority,
+                size: ticket.size,
                 assignee: ticket.assignee,
                 latestNote: ticket.latestNote
             )
