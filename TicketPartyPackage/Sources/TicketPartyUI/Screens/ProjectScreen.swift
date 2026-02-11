@@ -18,6 +18,7 @@ struct ProjectDetailView: View {
     @State private var searchText = ""
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
+    private let recentDoneLimit = 5
 
     init(project: Project, onRequestNewTicket: @escaping (UUID?) -> Void = { _ in }) {
         self.project = project
@@ -36,30 +37,39 @@ struct ProjectDetailView: View {
         selectedSizeFilter != nil || searchText.isEmpty == false
     }
 
-    private var visibleTickets: [Ticket] {
+    private var scopedAndFilteredTickets: [Ticket] {
         let scopedTickets = tickets.filter { ticket in
             selectedStateScope.matches(ticket.quickStatus)
         }
 
-        let filteredTickets = scopedTickets.filter { ticket in
+        return scopedTickets.filter { ticket in
             let sizeMatches = selectedSizeFilter == nil || ticket.size == selectedSizeFilter
             let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
             return sizeMatches && searchMatches
         }
-
-        return prioritizedTickets(in: filteredTickets) + backlogTickets(in: filteredTickets) + otherTickets(in: filteredTickets)
     }
 
-    private var topPinnedTickets: [Ticket] {
-        prioritizedTickets(in: visibleTickets)
+    private var visibleTickets: [Ticket] {
+        inProgressTickets(in: scopedAndFilteredTickets) +
+            recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit) +
+            backlogTickets(in: scopedAndFilteredTickets) +
+            otherTickets(in: scopedAndFilteredTickets)
+    }
+
+    private var visibleInProgressTickets: [Ticket] {
+        inProgressTickets(in: scopedAndFilteredTickets)
+    }
+
+    private var visibleRecentDoneTickets: [Ticket] {
+        recentDoneTickets(in: scopedAndFilteredTickets, limit: recentDoneLimit)
     }
 
     private var visibleBacklogTickets: [Ticket] {
-        backlogTickets(in: visibleTickets)
+        backlogTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleOtherTickets: [Ticket] {
-        otherTickets(in: visibleTickets)
+        otherTickets(in: scopedAndFilteredTickets)
     }
 
     private var isBacklogReorderingEnabled: Bool {
@@ -82,7 +92,8 @@ struct ProjectDetailView: View {
     var body: some View {
         ProjectWorkspaceView(
             project: project,
-            topPinnedTickets: topPinnedTickets,
+            inProgressTickets: visibleInProgressTickets,
+            recentDoneTickets: visibleRecentDoneTickets,
             backlogTickets: visibleBacklogTickets,
             otherTickets: visibleOtherTickets,
             selectedTicketID: $selectedTicketID,
@@ -284,10 +295,17 @@ struct ProjectDetailView: View {
         }
     }
 
-    private func prioritizedTickets(in tickets: [Ticket]) -> [Ticket] {
+    private func inProgressTickets(in tickets: [Ticket]) -> [Ticket] {
         tickets
-            .filter { $0.quickStatus.isPinnedTopStatus }
-            .sorted(by: sortByPinnedStatusThenOrderAndCreatedAt)
+            .filter { $0.quickStatus == .inProgress }
+    }
+
+    private func recentDoneTickets(in tickets: [Ticket], limit: Int) -> [Ticket] {
+        tickets
+            .filter { $0.quickStatus == .done }
+            .sorted(by: sortByMostRecentlyUpdated)
+            .prefix(limit)
+            .map(\.self)
     }
 
     private func backlogTickets(in tickets: [Ticket]) -> [Ticket] {
@@ -298,17 +316,15 @@ struct ProjectDetailView: View {
 
     private func otherTickets(in tickets: [Ticket]) -> [Ticket] {
         tickets
-            .filter { $0.quickStatus.isPinnedTopStatus == false && $0.quickStatus.isBacklogSortable == false }
+            .filter { $0.quickStatus != .inProgress && $0.quickStatus != .done && $0.quickStatus.isBacklogSortable == false }
             .sorted(by: sortByOrderKeyAndCreatedAt)
     }
 
-    private func sortByPinnedStatusThenOrderAndCreatedAt(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
-        let lhsRank = lhs.quickStatus.pinnedSortRank
-        let rhsRank = rhs.quickStatus.pinnedSortRank
-        if lhsRank != rhsRank {
-            return lhsRank < rhsRank
+    private func sortByMostRecentlyUpdated(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
+        if lhs.updatedAt == rhs.updatedAt {
+            return lhs.createdAt > rhs.createdAt
         }
-        return sortByOrderKeyAndCreatedAt(lhs, rhs)
+        return lhs.updatedAt > rhs.updatedAt
     }
 
     private func sortByOrderKeyAndCreatedAt(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
@@ -321,7 +337,8 @@ struct ProjectDetailView: View {
 
 private struct ProjectWorkspaceView: View {
     let project: Project
-    let topPinnedTickets: [Ticket]
+    let inProgressTickets: [Ticket]
+    let recentDoneTickets: [Ticket]
     let backlogTickets: [Ticket]
     let otherTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
@@ -344,9 +361,17 @@ private struct ProjectWorkspaceView: View {
             Divider()
 
             List(selection: $selectedTicketID) {
-                if topPinnedTickets.isEmpty == false {
-                    Section("Pinned") {
-                        ForEach(topPinnedTickets, id: \.id) { ticket in
+                if inProgressTickets.isEmpty == false {
+                    Section("In Progress") {
+                        ForEach(inProgressTickets, id: \.id) { ticket in
+                            ticketRow(ticket)
+                        }
+                    }
+                }
+
+                if recentDoneTickets.isEmpty == false {
+                    Section("Recent Done") {
+                        ForEach(recentDoneTickets, id: \.id) { ticket in
                             ticketRow(ticket)
                         }
                     }
@@ -643,21 +668,6 @@ private struct TicketStatusBadge: View {
 private extension TicketQuickStatus {
     var isBacklogSortable: Bool {
         self == .backlog || self == .blocked
-    }
-
-    var isPinnedTopStatus: Bool {
-        self == .inProgress || self == .done
-    }
-
-    var pinnedSortRank: Int {
-        switch self {
-        case .inProgress:
-            return 0
-        case .done:
-            return 1
-        default:
-            return 2
-        }
     }
 
     var tintColor: Color {
