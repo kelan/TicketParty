@@ -333,6 +333,7 @@
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				ENABLE_APP_SANDBOX = NO;
 			};
 			name = Debug;
 		};
@@ -342,6 +343,7 @@
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
 			buildSettings = {
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				ENABLE_APP_SANDBOX = NO;
 			};
 			name = Release;
 		};
