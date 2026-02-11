@@ -11,7 +11,7 @@ import TicketPartyDataStore
 
 public struct TicketPartyRootView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: [SortDescriptor(\Project.updatedAt, order: .reverse), SortDescriptor(\Project.name, order: .forward)]) private var projects: [Project]
+    @Query(sort: [SortDescriptor(\Project.updatedAt, order: .forward)]) private var projects: [Project]
     @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse)]) private var tickets: [Ticket]
 
     @State private var selection: SidebarSelection? = .activity
@@ -33,32 +33,33 @@ public struct TicketPartyRootView: View {
                     NavigationLink(value: SidebarSelection.allProjects) {
                         Label("All Projects", systemImage: "tablecells")
                     }
-
-                    NavigationLink(value: SidebarSelection.codex) {
-                        Label("Agents", systemImage: "terminal")
-                    }
                 }
 
                 Section {
                     ForEach(projects, id: \.id) { project in
                         NavigationLink(value: SidebarSelection.project(project.id)) {
                             let sidebarStatus = sidebarStatus(for: project)
+                            let agentStatus = codexViewModel.status(for: project.id)
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(project.name)
                                         .font(.headline)
-
-                                    if isSupervisorRunning(projectID: project.id) {
-                                        Circle()
-                                            .fill(.green)
-                                            .frame(width: 8, height: 8)
-                                            .accessibilityLabel("Supervisor is running")
-                                    }
                                 }
 
-                                Text("Updated \(sidebarStatus.lastUpdated, style: .relative)")
+                                Text("Updated \(updatedSubtitle(for: sidebarStatus.lastUpdated))")
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
+
+                                HStack(spacing: 6) {
+                                    Circle()
+                                        .fill(agentStatusColor(agentStatus))
+                                        .frame(width: 8, height: 8)
+
+                                    Text(agentStatusLabel(agentStatus))
+                                        .font(.caption2)
+                                        .foregroundStyle(agentStatusColor(agentStatus))
+                                        .lineLimit(1)
+                                }
 
                                 Text("\(sidebarStatus.inProgressCount) in progress / \(sidebarStatus.backlogCount) backlog")
                                     .font(.caption2)
@@ -84,6 +85,9 @@ public struct TicketPartyRootView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                SidebarSupervisorFooter(status: codexViewModel.supervisorHealth)
+            }
             .navigationTitle("TicketParty")
             #if os(macOS)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 230)
@@ -95,9 +99,6 @@ public struct TicketPartyRootView: View {
 
             case .allProjects:
                 OverallKanbanView(projects: projects)
-
-            case .codex:
-                CodexStatusView(projects: projects)
 
             case let .project(projectID):
                 if let project = projects.first(where: { $0.id == projectID }) {
@@ -235,18 +236,125 @@ public struct TicketPartyRootView: View {
         )
     }
 
-    private func isSupervisorRunning(projectID: UUID) -> Bool {
-        if case .running = codexViewModel.status(for: projectID) {
-            return true
+    private func agentStatusLabel(_ status: CodexProjectStatus) -> String {
+        switch status {
+        case .running:
+            return "Agent running"
+        case .starting:
+            return "Agent starting"
+        case .stopped:
+            return "Agent stopped"
+        case .error:
+            return "Agent error"
         }
-        return false
     }
+
+    private func agentStatusColor(_ status: CodexProjectStatus) -> Color {
+        switch status {
+        case .running:
+            return .green
+        case .starting:
+            return .orange
+        case .error:
+            return .red
+        case .stopped:
+            return .secondary
+        }
+    }
+
+    private func updatedSubtitle(for date: Date) -> String {
+        let now = Date()
+        let seconds = max(0, now.timeIntervalSince(date))
+
+        if seconds < 60 {
+            return "just now"
+        }
+
+        if seconds < 3600 {
+            let minutes = Int(seconds / 60)
+            return "\(minutes) min ago"
+        }
+
+        if seconds < 86400 {
+            let hours = Int(seconds / 3600)
+            return "\(hours) hr ago"
+        }
+
+        if seconds < 172_800 {
+            let days = Int(seconds / 86400)
+            return "\(days) day ago"
+        }
+
+        return Self.sidebarDateFormatter.string(from: date)
+    }
+
+    private static let sidebarDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }()
 }
 
 private struct ProjectSidebarStatus {
     let lastUpdated: Date
     let inProgressCount: Int
     let backlogCount: Int
+}
+
+private struct SidebarSupervisorFooter: View {
+    let status: CodexSupervisorHealthStatus
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+
+            Text(statusTitle)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.thinMaterial)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(status.title)
+        .help(status.detail)
+    }
+
+    private var statusTitle: String {
+        switch status {
+        case .healthy:
+            return "Supervisor running"
+        case .notRunning:
+            return "Supervisor not running"
+        case .staleRecord:
+            return "Supervisor stale"
+        case .unreachable:
+            return "Supervisor unreachable"
+        case .handshakeFailed:
+            return "Supervisor handshake failed"
+        case .invalidRecord:
+            return "Supervisor invalid record"
+        }
+    }
+
+    private var statusColor: Color {
+        switch status {
+        case .healthy:
+            return .green
+        case .notRunning:
+            return .secondary
+        case .staleRecord, .unreachable:
+            return .orange
+        case .handshakeFailed, .invalidRecord:
+            return .red
+        }
+    }
 }
 
 #Preview {

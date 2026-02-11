@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 
 struct ProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(CodexViewModel.self) private var codexViewModel
     @Query(sort: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]) private var allTickets: [Ticket]
 
     @Bindable var project: Project
@@ -89,6 +90,15 @@ struct ProjectDetailView: View {
         [project]
     }
 
+    private var canStartRunLoop: Bool {
+        switch codexViewModel.loopState(for: project.id) {
+        case .idle, .completed:
+            return true
+        case .preparingQueue, .running, .paused, .failed, .cancelling:
+            return false
+        }
+    }
+
     var body: some View {
         ProjectWorkspaceView(
             project: project,
@@ -108,6 +118,16 @@ struct ProjectDetailView: View {
         .navigationTitle(project.name)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    Task {
+                        await codexViewModel.startLoop(project: project, tickets: allTickets)
+                    }
+                } label: {
+                    Image(systemName: "play.circle")
+                }
+                .help("Start Run Loop")
+                .disabled(canStartRunLoop == false)
+
                 Button {
                     onRequestNewTicket(project.id)
                 } label: {

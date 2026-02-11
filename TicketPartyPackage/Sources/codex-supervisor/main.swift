@@ -1012,11 +1012,23 @@ private final class ControlServer: @unchecked Sendable {
             arguments += ["-m", "Agent: Codex"]
         }
 
+        // Keep prek state in a writable temp directory for daemon-driven commits.
+        let prekHome = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+            .appendingPathComponent("prek-\(URL(fileURLWithPath: workingDirectory).lastPathComponent)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: prekHome, withIntermediateDirectories: true)
+        } catch {
+            lines.append("warning: failed to create PREK_HOME at \(prekHome.path): \(error.localizedDescription)")
+        }
+        var commitEnvironment = ProcessInfo.processInfo.environment
+        commitEnvironment["PREK_HOME"] = prekHome.path
+
         let commit = runLocalCommand(
             taskID: taskID,
             executable: "/usr/bin/git",
             arguments: arguments,
-            workingDirectory: workingDirectory
+            workingDirectory: workingDirectory,
+            environment: commitEnvironment
         )
         lines.append(contentsOf: Self.splitOutput(commit.stdout))
         lines.append(contentsOf: Self.splitOutput(commit.stderr))
@@ -1031,12 +1043,14 @@ private final class ControlServer: @unchecked Sendable {
         taskID: UUID,
         executable: String,
         arguments: [String],
-        workingDirectory: String
+        workingDirectory: String,
+        environment: [String: String]? = nil
     ) -> LocalCommandResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
+        process.environment = environment
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()

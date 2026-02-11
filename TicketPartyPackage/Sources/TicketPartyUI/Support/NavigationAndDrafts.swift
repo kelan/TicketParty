@@ -4,7 +4,6 @@ import TicketPartyDataStore
 enum SidebarSelection: Hashable {
     case activity
     case allProjects
-    case codex
     case project(UUID)
 }
 
