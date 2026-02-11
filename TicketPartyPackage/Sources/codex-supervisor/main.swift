@@ -509,9 +509,14 @@ private final class ControlServer: @unchecked Sendable {
         let session = try ensureWorker(projectID: projectID, workingDirectory: resolvedWorkingDirectory)
 
         if let existingRequestID = session.activeRequestID, existingRequestID != requestID {
-            throw SupervisorError.invalidRequest(
-                "Project \(projectID.uuidString) already has in-flight request \(existingRequestID.uuidString)."
-            )
+            if activeRequests[existingRequestID] == nil {
+                // Recover from stale local state if prior request mapping was already dropped.
+                session.activeRequestID = nil
+            } else {
+                throw SupervisorError.invalidRequest(
+                    "Project \(projectID.uuidString) already has in-flight request \(existingRequestID.uuidString)."
+                )
+            }
         }
 
         let payload = SidecarCommand(
@@ -816,6 +821,44 @@ private final class ControlServer: @unchecked Sendable {
                             threadID: nil
                         )
                     )
+                    broadcast(
+                        SupervisorEvent(
+                            type: "ticket.completed",
+                            projectID: activeRequest.projectID.uuidString,
+                            ticketID: activeRequest.ticketID.uuidString,
+                            requestID: activeRequest.requestID.uuidString,
+                            pid: nil,
+                            text: nil,
+                            message: nil,
+                            success: false,
+                            summary: message,
+                            threadID: nil
+                        )
+                    )
+                    clearRequest(activeRequest)
+                    return
+                }
+
+                if
+                    let nestedType = eventPayload["type"] as? String,
+                    nestedType == "turn.completed"
+                {
+                    broadcast(
+                        SupervisorEvent(
+                            type: "ticket.completed",
+                            projectID: activeRequest.projectID.uuidString,
+                            ticketID: activeRequest.ticketID.uuidString,
+                            requestID: activeRequest.requestID.uuidString,
+                            pid: nil,
+                            text: nil,
+                            message: nil,
+                            success: true,
+                            summary: nil,
+                            threadID: nil
+                        )
+                    )
+                    clearRequest(activeRequest)
+                    return
                 }
             }
 

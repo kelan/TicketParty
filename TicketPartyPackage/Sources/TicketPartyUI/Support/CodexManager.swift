@@ -109,7 +109,7 @@ actor CodexManager {
         ticketID: UUID,
         title: String,
         description: String
-    ) throws {
+    ) async throws {
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
         startSubscriptionTaskIfNeeded()
 
@@ -124,31 +124,43 @@ actor CodexManager {
 
         let payload = try Self.encodeLine(request)
 
-        let responseObject: [String: Any]
-        do {
-            responseObject = try Self.sendRequest(
-                payload: payload,
-                socketPath: supervisorSocketPath,
-                receiveTimeout: 5,
-                sendTimeout: 5
-            )
-        } catch let error as ManagerError {
-            throw error
-        } catch {
-            throw ManagerError.supervisorUnavailable(error.localizedDescription)
-        }
+        let maxAttempts = 4
+        var attempt = 0
+        while true {
+            attempt += 1
 
-        guard let type = responseObject["type"] as? String else {
-            throw ManagerError.invalidResponse("Missing response type.")
-        }
+            let responseObject: [String: Any]
+            do {
+                responseObject = try Self.sendRequest(
+                    payload: payload,
+                    socketPath: supervisorSocketPath,
+                    receiveTimeout: 5,
+                    sendTimeout: 5
+                )
+            } catch let error as ManagerError {
+                throw error
+            } catch {
+                throw ManagerError.supervisorUnavailable(error.localizedDescription)
+            }
 
-        if type == "error" {
-            let message = responseObject["message"] as? String ?? "Unknown supervisor error."
-            throw ManagerError.requestFailed(message)
-        }
+            guard let type = responseObject["type"] as? String else {
+                throw ManagerError.invalidResponse("Missing response type.")
+            }
 
-        guard type == "sendTicket.ok" else {
-            throw ManagerError.invalidResponse("Unexpected sendTicket response type '\(type)'.")
+            if type == "error" {
+                let message = responseObject["message"] as? String ?? "Unknown supervisor error."
+                if Self.isBusyInFlightMessage(message), attempt < maxAttempts {
+                    try? await Task.sleep(for: .milliseconds(250))
+                    continue
+                }
+                throw ManagerError.requestFailed(message)
+            }
+
+            guard type == "sendTicket.ok" else {
+                throw ManagerError.invalidResponse("Unexpected sendTicket response type '\(type)'.")
+            }
+
+            break
         }
 
         requestToTicket[requestID] = ticketID
@@ -484,6 +496,10 @@ actor CodexManager {
             .replacingOccurrences(of: "${HOME}", with: homeDirectory)
             .replacingOccurrences(of: "$HOME", with: homeDirectory)
         return URL(fileURLWithPath: expandedEnv).standardizedFileURL.path
+    }
+
+    private nonisolated static func isBusyInFlightMessage(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("already has in-flight request")
     }
 }
 
