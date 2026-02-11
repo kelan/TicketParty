@@ -240,7 +240,6 @@ struct ProjectDetailView: View {
         ticket.title = draft.title
         ticket.ticketDescription = draft.description
         ticket.size = draft.size
-        ticket.severity = draft.severity
         ticket.updatedAt = .now
 
         do {
@@ -435,7 +434,6 @@ private struct ProjectWorkspaceView: View {
                 HStack(spacing: 8) {
                     Text(ticket.displayID)
                     Text(ticket.size.title)
-                    Text(ticket.severity.title)
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -567,12 +565,6 @@ private struct ProjectTicketDetailPanel: View {
                                 Text(size.title).tag(size)
                             }
                         }
-
-                        Picker("Severity", selection: severityBinding(for: ticket)) {
-                            ForEach(TicketSeverity.allCases, id: \.self) { severity in
-                                Text(severity.title).tag(severity)
-                            }
-                        }
                     }
 
                     Section("Codex") {
@@ -641,16 +633,6 @@ private struct ProjectTicketDetailPanel: View {
             get: { ticket.size },
             set: { newSize in
                 ticket.size = newSize
-                persist(ticket: ticket)
-            }
-        )
-    }
-
-    private func severityBinding(for ticket: Ticket) -> Binding<TicketSeverity> {
-        Binding(
-            get: { ticket.severity },
-            set: { newSeverity in
-                ticket.severity = newSeverity
                 persist(ticket: ticket)
             }
         )
@@ -870,7 +852,6 @@ private enum ProjectPreviewData {
                 title: ticket.title,
                 description: ticket.latestNote,
                 size: ticket.size.ticketSize,
-                severity: ticket.size.ticketSeverity,
                 stateID: ticket.state.ticketQuickStatus.stateID
             )
         }

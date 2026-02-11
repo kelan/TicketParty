@@ -44,7 +44,6 @@ public final class Ticket {
     public var title: String
     public var ticketDescription: String
     public var size: TicketSize = TicketSize.straightforwardFeature
-    public var severity: TicketSeverity
     public var workflowID: UUID?
     public var stateID: UUID?
     public var assigneeID: UUID?
@@ -62,7 +61,6 @@ public final class Ticket {
         title: String,
         description: String = "",
         size: TicketSize = .straightforwardFeature,
-        severity: TicketSeverity = .major,
         workflowID: UUID? = nil,
         stateID: UUID? = nil,
         assigneeID: UUID? = nil,
@@ -79,7 +77,6 @@ public final class Ticket {
         self.title = title
         ticketDescription = description
         self.size = size
-        self.severity = severity
         self.workflowID = workflowID
         self.stateID = stateID
         self.assigneeID = assigneeID

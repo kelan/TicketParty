@@ -14,13 +14,6 @@ public enum TicketSize: String, Codable, CaseIterable, Sendable {
     case majorRefactor = "major_refactor"
 }
 
-public enum TicketSeverity: String, Codable, CaseIterable, Sendable {
-    case trivial
-    case minor
-    case major
-    case critical
-}
-
 public enum AuthorType: String, Codable, CaseIterable, Sendable {
     case owner
     case agent
@@ -80,7 +73,6 @@ public struct TicketSummary: Codable, Hashable, Sendable {
     public let displayID: String
     public let title: String
     public let size: String
-    public let severity: String
     public let updatedAt: Date
 
     public init(
@@ -88,14 +80,12 @@ public struct TicketSummary: Codable, Hashable, Sendable {
         displayID: String,
         title: String,
         size: String,
-        severity: String,
         updatedAt: Date
     ) {
         self.id = id
         self.displayID = displayID
         self.title = title
         self.size = size
-        self.severity = severity
         self.updatedAt = updatedAt
     }
 }
@@ -107,7 +97,6 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
     public let title: String
     public let description: String
     public let size: TicketSize
-    public let severity: TicketSeverity
     public let workflowID: UUID?
     public let stateID: UUID?
     public let assigneeID: UUID?
@@ -123,7 +112,6 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
         title: String,
         description: String,
         size: TicketSize,
-        severity: TicketSeverity,
         workflowID: UUID?,
         stateID: UUID?,
         assigneeID: UUID?,
@@ -138,7 +126,6 @@ public struct TicketDTO: Codable, Hashable, Identifiable, Sendable {
         self.title = title
         self.description = description
         self.size = size
-        self.severity = severity
         self.workflowID = workflowID
         self.stateID = stateID
         self.assigneeID = assigneeID

@@ -58,12 +58,6 @@ struct TicketEditorSheet: View {
                             Text(size.title).tag(size)
                         }
                     }
-
-                    Picker("Severity", selection: $draft.severity) {
-                        ForEach(TicketSeverity.allCases, id: \.self) { severity in
-                            Text(severity.title).tag(severity)
-                        }
-                    }
                 }
             }
             .navigationTitle(title)

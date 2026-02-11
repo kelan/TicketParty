@@ -166,7 +166,6 @@ public struct TicketPartyRootView: View {
             title: normalizedDraft.title,
             description: normalizedDraft.description,
             size: normalizedDraft.size,
-            severity: normalizedDraft.severity,
             stateID: TicketQuickStatus.backlog.stateID,
             createdAt: .now,
             updatedAt: .now
@@ -232,7 +231,6 @@ public struct TicketPartyRootView: View {
                         title: ticket.title,
                         description: ticket.latestNote,
                         size: ticket.size.ticketSize,
-                        severity: ticket.size.ticketSeverity,
                         stateID: ticket.state.ticketQuickStatus.stateID
                     )
                 )

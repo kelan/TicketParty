@@ -75,19 +75,6 @@ extension StubSize {
             return .majorRefactor
         }
     }
-
-    var ticketSeverity: TicketSeverity {
-        switch self {
-        case .quickTweak:
-            return .minor
-        case .straightforwardFeature:
-            return .major
-        case .requiresThinking:
-            return .major
-        case .majorRefactor:
-            return .critical
-        }
-    }
 }
 
 extension StubTicketState {

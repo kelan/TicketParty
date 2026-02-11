@@ -90,15 +90,13 @@ struct TicketDraft: Equatable {
     var title: String = ""
     var description: String = ""
     var size: TicketSize = .straightforwardFeature
-    var severity: TicketSeverity = .major
 
     var normalized: TicketDraft {
         TicketDraft(
             projectID: projectID,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            size: size,
-            severity: severity
+            size: size
         )
     }
 
@@ -111,14 +109,12 @@ struct TicketDraft: Equatable {
         projectID: UUID? = nil,
         title: String = "",
         description: String = "",
-        size: TicketSize = .straightforwardFeature,
-        severity: TicketSeverity = .major
+        size: TicketSize = .straightforwardFeature
     ) {
         self.projectID = projectID
         self.title = title
         self.description = description
         self.size = size
-        self.severity = severity
     }
 
     init(ticket: Ticket) {
@@ -126,7 +122,6 @@ struct TicketDraft: Equatable {
         title = ticket.title
         description = ticket.ticketDescription
         size = ticket.size
-        severity = ticket.severity
     }
 }
 
@@ -142,12 +137,6 @@ extension TicketSize {
         case .majorRefactor:
             return "Major Refactor"
         }
-    }
-}
-
-extension TicketSeverity {
-    var title: String {
-        rawValue.capitalized
     }
 }
 
