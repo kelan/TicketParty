@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 import TicketPartyDataStore
 import TicketPartyModels
+import UniformTypeIdentifiers
 
 struct ProjectDetailView: View {
     @Environment(\.modelContext) private var modelContext
@@ -82,7 +83,9 @@ struct ProjectDetailView: View {
                     }
                     .help("Edit Ticket")
                 }
+            }
 
+            ToolbarItem(placement: .navigation) {
                 Button {
                     isPresentingEditProject = true
                 } label: {
@@ -406,6 +409,7 @@ struct ProjectEditorSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var draft: ProjectDraft
+    @State private var isPresentingWorkingDirectoryPicker = false
 
     init(
         title: String,
@@ -433,7 +437,15 @@ struct ProjectEditorSheet: View {
                 }
 
                 Section("Codex") {
-                    TextField("Working Directory", text: $draft.workingDirectory)
+                    HStack(spacing: 8) {
+                        TextField("Working Directory", text: $draft.workingDirectory)
+                        Button {
+                            isPresentingWorkingDirectoryPicker = true
+                        } label: {
+                            Image(systemName: "folder")
+                        }
+                        .help("Choose Working Directory")
+                    }
                     Text("Required to run Codex for this project.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -454,6 +466,16 @@ struct ProjectEditorSheet: View {
                     }
                     .disabled(draft.normalized.name.isEmpty)
                 }
+            }
+            .fileImporter(
+                isPresented: $isPresentingWorkingDirectoryPicker,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                guard case let .success(urls) = result, let url = urls.first else {
+                    return
+                }
+                draft.workingDirectory = url.path(percentEncoded: false)
             }
         }
         .frame(minWidth: 520, minHeight: 320)
