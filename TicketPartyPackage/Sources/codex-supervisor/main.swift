@@ -948,7 +948,8 @@ private final class ControlServer: @unchecked Sendable {
                 taskID: taskID,
                 executable: "/bin/zsh",
                 arguments: ["-lc", command],
-                workingDirectory: workingDirectory
+                workingDirectory: workingDirectory,
+                environment: commandEnvironment(workingDirectory: workingDirectory)
             )
             let lines = Self.splitOutput(result.stdout + (result.stderr.isEmpty ? "" : "\n\(result.stderr)"))
             if result.exitCode == 0 {
@@ -1012,23 +1013,12 @@ private final class ControlServer: @unchecked Sendable {
             arguments += ["-m", "Agent: Codex"]
         }
 
-        // Keep prek state in a writable temp directory for daemon-driven commits.
-        let prekHome = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-            .appendingPathComponent("prek-\(URL(fileURLWithPath: workingDirectory).lastPathComponent)", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: prekHome, withIntermediateDirectories: true)
-        } catch {
-            lines.append("warning: failed to create PREK_HOME at \(prekHome.path): \(error.localizedDescription)")
-        }
-        var commitEnvironment = ProcessInfo.processInfo.environment
-        commitEnvironment["PREK_HOME"] = prekHome.path
-
         let commit = runLocalCommand(
             taskID: taskID,
             executable: "/usr/bin/git",
             arguments: arguments,
             workingDirectory: workingDirectory,
-            environment: commitEnvironment
+            environment: commandEnvironment(workingDirectory: workingDirectory)
         )
         lines.append(contentsOf: Self.splitOutput(commit.stdout))
         lines.append(contentsOf: Self.splitOutput(commit.stderr))
@@ -1088,6 +1078,39 @@ private final class ControlServer: @unchecked Sendable {
         }
 
         return LocalCommandResult(exitCode: process.terminationStatus, stdout: stdout, stderr: stderr)
+    }
+
+    private func commandEnvironment(workingDirectory: String?) -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+
+        // launchd does not include Homebrew by default; prepend stable tool paths.
+        let requiredPathSegments = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let existingPathSegments = (env["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        var mergedPathSegments: [String] = []
+        var seen: Set<String> = []
+        for segment in requiredPathSegments + existingPathSegments where seen.insert(segment).inserted {
+            mergedPathSegments.append(segment)
+        }
+        env["PATH"] = mergedPathSegments.joined(separator: ":")
+
+        if env["HOME"]?.isEmpty != false {
+            env["HOME"] = NSHomeDirectory()
+        }
+
+        // Keep prek state in a writable temp directory for daemon-driven operations.
+        if let workingDirectory {
+            let prekHome = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+                .appendingPathComponent(
+                    "prek-\(URL(fileURLWithPath: workingDirectory).lastPathComponent)",
+                    isDirectory: true
+                )
+            try? FileManager.default.createDirectory(at: prekHome, withIntermediateDirectories: true)
+            env["PREK_HOME"] = prekHome.path
+        }
+
+        return env
     }
 
     private func handleWorkerStatus(request: ControlRequest, fd: Int32) throws {
@@ -1275,6 +1298,7 @@ private final class ControlServer: @unchecked Sendable {
         process.executableURL = URL(fileURLWithPath: nodeBinary)
         process.arguments = [sidecarScript]
         process.currentDirectoryURL = URL(fileURLWithPath: workingDirectory)
+        process.environment = commandEnvironment(workingDirectory: workingDirectory)
 
         let stdinPipe = Pipe()
         let stdoutPipe = Pipe()
