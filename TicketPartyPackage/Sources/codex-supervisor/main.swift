@@ -246,6 +246,7 @@ private final class ControlServer {
             Darwin.close(fd)
         }
 
+        setNoSigPipe(fd: fd)
         setTimeout(fd: fd, option: SO_RCVTIMEO, seconds: 2)
         setTimeout(fd: fd, option: SO_SNDTIMEO, seconds: 2)
 
@@ -373,6 +374,15 @@ private final class ControlServer {
         _ = withUnsafePointer(to: &timeout) { pointer in
             setsockopt(fd, SOL_SOCKET, option, pointer, socklen_t(MemoryLayout<timeval>.size))
         }
+    }
+
+    private func setNoSigPipe(fd: Int32) {
+        #if os(macOS)
+            var enabled: Int32 = 1
+            _ = withUnsafePointer(to: &enabled) { pointer in
+                setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size))
+            }
+        #endif
     }
 }
 
