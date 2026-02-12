@@ -64,8 +64,7 @@ struct ProjectDetailView: View {
     private var visibleTickets: [Ticket] {
         visibleRecentDoneTickets +
             visibleInProgressTickets +
-            visibleBacklogTickets +
-            visibleOtherTickets
+            visibleBacklogTickets
     }
 
     private var visibleInProgressTickets: [Ticket] {
@@ -85,11 +84,6 @@ struct ProjectDetailView: View {
     private var visibleBacklogTickets: [Ticket] {
         guard selectedStateScope != .allDone else { return [] }
         return backlogTickets(in: scopedAndFilteredTickets)
-    }
-
-    private var visibleOtherTickets: [Ticket] {
-        guard selectedStateScope != .allDone else { return [] }
-        return otherTickets(in: scopedAndFilteredTickets)
     }
 
     private var isBacklogReorderingEnabled: Bool {
@@ -129,7 +123,6 @@ struct ProjectDetailView: View {
             inProgressTickets: visibleInProgressTickets,
             recentDoneTickets: visibleRecentDoneTickets,
             backlogTickets: visibleBacklogTickets,
-            otherTickets: visibleOtherTickets,
             selectedTicketID: $selectedTicketID,
             selectedSizeFilter: $selectedSizeFilter,
             selectedStateScope: $selectedStateScope,
@@ -376,12 +369,6 @@ struct ProjectDetailView: View {
             .sorted(by: sortByOrderKeyAndCreatedAt)
     }
 
-    private func otherTickets(in tickets: [Ticket]) -> [Ticket] {
-        tickets
-            .filter { $0.quickStatus != .inProgress && $0.quickStatus.isDone == false && $0.quickStatus.isBacklogSortable == false }
-            .sorted(by: sortByOrderKeyAndCreatedAt)
-    }
-
     private func sortByMostRecentlyUpdated(_ lhs: Ticket, _ rhs: Ticket) -> Bool {
         if lhs.updatedAt == rhs.updatedAt {
             return lhs.createdAt > rhs.createdAt
@@ -403,7 +390,6 @@ private struct ProjectWorkspaceView: View {
     let inProgressTickets: [Ticket]
     let recentDoneTickets: [Ticket]
     let backlogTickets: [Ticket]
-    let otherTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
     @Binding var selectedSizeFilter: TicketSize?
     @Binding var selectedStateScope: TicketStateScope
@@ -447,7 +433,7 @@ private struct ProjectWorkspaceView: View {
                                 .tag(ticket.id)
                         }
                     } header: {
-                        Text("In Progress")
+                        Text("In Progress 🟢")
                             .font(.title2)
                     }
                 }
@@ -461,17 +447,8 @@ private struct ProjectWorkspaceView: View {
                         }
                         .onMove(perform: onMoveBacklogTickets)
                     } header: {
-                        Text("Backlog")
+                        Text("Backlog 🟡")
                             .font(.title2)
-                    }
-                }
-
-                if otherTickets.isEmpty == false {
-                    Section("Other") {
-                        ForEach(otherTickets, id: \.id) { ticket in
-                            ticketRow(ticket)
-                                .tag(ticket.id)
-                        }
                     }
                 }
             }
@@ -578,7 +555,7 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
     var doneSectionTitle: String {
         switch self {
         case .overview:
-            return "Recently Done"
+            return "Recently Done ✅"
         case .allDone:
             return "All Done"
         case .everything:
