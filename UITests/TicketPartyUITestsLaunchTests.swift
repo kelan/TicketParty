@@ -7,7 +7,7 @@
 
 import XCTest
 
-final class TicketPartyUITestsLaunchTests: XCTestCase {
+class TicketPartyUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         false
@@ -23,7 +23,7 @@ final class TicketPartyUITestsLaunchTests: XCTestCase {
         app.launch()
 
         // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        // such as logging into a test account or navigating somewhere in the app.
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "Launch Screen"
