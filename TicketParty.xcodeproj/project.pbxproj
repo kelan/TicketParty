@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 90;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -95,27 +95,21 @@
 /* Begin PBXFrameworksBuildPhase section */
 		764104F82F3B17AF0008EB12 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 				764106262F3BC9A10008EB12 /* TicketPartyDataStore in Frameworks */,
 				7641062A2F3BC9A10008EB12 /* TicketPartyUI in Frameworks */,
 				764106282F3BC9A10008EB12 /* TicketPartyModels in Frameworks */,
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		764105092F3B17B10008EB12 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		764105132F3B17B10008EB12 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
@@ -200,8 +194,6 @@
 				7641064B2F3C20000008EB12 /* TicketPartyPackage/TicketPartyTests */,
 			);
 			name = TicketPartyTests;
-			packageProductDependencies = (
-			);
 			productName = TicketPartyTests;
 			productReference = 7641050C2F3B17B10008EB12 /* TicketPartyTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -223,8 +215,6 @@
 				764105192F3B17B10008EB12 /* UITests */,
 			);
 			name = TicketPartyUITests;
-			packageProductDependencies = (
-			);
 			productName = TicketPartyUITests;
 			productReference = 764105162F3B17B10008EB12 /* TicketPartyUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
@@ -264,7 +254,7 @@
 			packageReferences = (
 				764106082F3BC1B10008EB12 /* XCLocalSwiftPackageReference "TicketPartyPackage" */,
 			);
-			preferredProjectObjectVersion = 77;
+			preferredProjectObjectVersion = 90;
 			productRefGroup = 764104FC2F3B17AF0008EB12 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -279,24 +269,18 @@
 /* Begin PBXResourcesBuildPhase section */
 		764104F92F3B17AF0008EB12 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		7641050A2F3B17B10008EB12 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		764105142F3B17B10008EB12 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
@@ -304,21 +288,13 @@
 		76C5E3F32F3E6909004AFA9D /* Run SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
 			name = "Run SwiftLint";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "PATH=$PATH:/opt/homebrew/bin\njust swiftlint\n";
+			shellScript = (
+				"PATH=$PATH:/opt/homebrew/bin",
+				"just swiftlint",
+				"",
+			);
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -326,24 +302,18 @@
 /* Begin PBXSourcesBuildPhase section */
 		764104F72F3B17AF0008EB12 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		764105082F3B17B10008EB12 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 		764105122F3B17B10008EB12 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
 			files = (
 			);
-			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
@@ -365,7 +335,7 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		764105202F3B17B10008EB12 /* Debug */ = {
+		764105202F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketParty" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
@@ -374,7 +344,7 @@
 			};
 			name = Debug;
 		};
-		764105212F3B17B10008EB12 /* Release */ = {
+		764105212F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketParty" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
@@ -383,7 +353,7 @@
 			};
 			name = Release;
 		};
-		764105222F3B17B10008EB12 /* Debug */ = {
+		764105222F3B17B10008EB12 /* Debug configuration for PBXProject "TicketParty" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -445,7 +415,7 @@
 			};
 			name = Debug;
 		};
-		764105232F3B17B10008EB12 /* Release */ = {
+		764105232F3B17B10008EB12 /* Release configuration for PBXProject "TicketParty" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -499,7 +469,7 @@
 			};
 			name = Release;
 		};
-		764105252F3B17B10008EB12 /* Debug */ = {
+		764105252F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketPartyTests" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketPartyTests.xcconfig;
@@ -507,7 +477,7 @@
 			};
 			name = Debug;
 		};
-		764105262F3B17B10008EB12 /* Release */ = {
+		764105262F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketPartyTests" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketPartyTests.xcconfig;
@@ -515,7 +485,7 @@
 			};
 			name = Release;
 		};
-		764105282F3B17B10008EB12 /* Debug */ = {
+		764105282F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketPartyUITests" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketPartyUITests.xcconfig;
@@ -523,7 +493,7 @@
 			};
 			name = Debug;
 		};
-		764105292F3B17B10008EB12 /* Release */ = {
+		764105292F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketPartyUITests" */ = {
 			isa = XCBuildConfiguration;
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketPartyUITests.xcconfig;
@@ -537,37 +507,33 @@
 		764104F62F3B17AF0008EB12 /* Build configuration list for PBXProject "TicketParty" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				764105222F3B17B10008EB12 /* Debug */,
-				764105232F3B17B10008EB12 /* Release */,
+				764105222F3B17B10008EB12 /* Debug configuration for PBXProject "TicketParty" */,
+				764105232F3B17B10008EB12 /* Release configuration for PBXProject "TicketParty" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		7641051F2F3B17B10008EB12 /* Build configuration list for PBXNativeTarget "TicketParty" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				764105202F3B17B10008EB12 /* Debug */,
-				764105212F3B17B10008EB12 /* Release */,
+				764105202F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketParty" */,
+				764105212F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketParty" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		764105242F3B17B10008EB12 /* Build configuration list for PBXNativeTarget "TicketPartyTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				764105252F3B17B10008EB12 /* Debug */,
-				764105262F3B17B10008EB12 /* Release */,
+				764105252F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketPartyTests" */,
+				764105262F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketPartyTests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 		764105272F3B17B10008EB12 /* Build configuration list for PBXNativeTarget "TicketPartyUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				764105282F3B17B10008EB12 /* Debug */,
-				764105292F3B17B10008EB12 /* Release */,
+				764105282F3B17B10008EB12 /* Debug configuration for PBXNativeTarget "TicketPartyUITests" */,
+				764105292F3B17B10008EB12 /* Release configuration for PBXNativeTarget "TicketPartyUITests" */,
 			);
-			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
