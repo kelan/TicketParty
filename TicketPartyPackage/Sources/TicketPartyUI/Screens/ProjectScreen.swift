@@ -15,12 +15,12 @@ struct ProjectDetailView: View {
 
     @State private var selectedTicketID: UUID?
     @State private var selectionAnchorTicketID: UUID?
-    @State private var selectedSizeFilter: TicketSize?
-    @State private var selectedStateScope: TicketStateScope = .overview
+    @State private var selectedStateScope: TicketStateScope = .active
     @State private var searchText = ""
+    @State private var isShowingFilterPopover = false
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
-    private let overviewDoneLimit = 5
+    private let activeDoneLimit = 5
     private let isPreview: Bool
 
     init(
@@ -46,7 +46,7 @@ struct ProjectDetailView: View {
     }
 
     private var isSoftFilterActive: Bool {
-        selectedSizeFilter != nil || searchText.isEmpty == false
+        searchText.isEmpty == false
     }
 
     private var scopedAndFilteredTickets: [Ticket] {
@@ -55,9 +55,7 @@ struct ProjectDetailView: View {
         }
 
         return scopedTickets.filter { ticket in
-            let sizeMatches = selectedSizeFilter == nil || ticket.size == selectedSizeFilter
-            let searchMatches = searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
-            return sizeMatches && searchMatches
+            searchText.isEmpty || ticket.title.localizedCaseInsensitiveContains(searchText)
         }
     }
 
@@ -68,21 +66,21 @@ struct ProjectDetailView: View {
     }
 
     private var visibleInProgressTickets: [Ticket] {
-        guard selectedStateScope != .allDone else { return [] }
+        guard selectedStateScope != .done else { return [] }
         return inProgressTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleRecentDoneTickets: [Ticket] {
         switch selectedStateScope {
-        case .overview:
-            return doneTickets(in: scopedAndFilteredTickets, limit: overviewDoneLimit)
-        case .allDone, .everything:
+        case .active:
+            return doneTickets(in: scopedAndFilteredTickets, limit: activeDoneLimit)
+        case .done:
             return doneTickets(in: scopedAndFilteredTickets, limit: nil)
         }
     }
 
     private var visibleBacklogTickets: [Ticket] {
-        guard selectedStateScope != .allDone else { return [] }
+        guard selectedStateScope != .done else { return [] }
         return backlogTickets(in: scopedAndFilteredTickets)
     }
 
@@ -131,10 +129,7 @@ struct ProjectDetailView: View {
             recentDoneTickets: visibleRecentDoneTickets,
             backlogTickets: visibleBacklogTickets,
             selectedTicketID: $selectedTicketID,
-            selectedSizeFilter: $selectedSizeFilter,
-            selectedStateScope: $selectedStateScope,
             doneSectionTitle: selectedStateScope.doneSectionTitle,
-            searchText: $searchText,
             selectedTicket: selectedTicket,
             isBacklogReorderingEnabled: isBacklogReorderingEnabled,
             onMoveBacklogTickets: moveBacklogTickets,
@@ -144,6 +139,20 @@ struct ProjectDetailView: View {
         .navigationTitle(project.name)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                TextField("Search tickets", text: $searchText)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 220)
+
+                Button {
+                    isShowingFilterPopover.toggle()
+                } label: {
+                    Image(systemName: selectedStateScope == .done ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                }
+                .help("Filter Tickets")
+                .popover(isPresented: $isShowingFilterPopover, arrowEdge: .top) {
+                    ProjectFiltersPopover(selectedStateScope: $selectedStateScope)
+                }
+
                 Button {
                     Task {
                         await runPrimaryCodexAction()
@@ -458,10 +467,7 @@ private struct ProjectWorkspaceView: View {
     let recentDoneTickets: [Ticket]
     let backlogTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
-    @Binding var selectedSizeFilter: TicketSize?
-    @Binding var selectedStateScope: TicketStateScope
     let doneSectionTitle: String
-    @Binding var searchText: String
     let selectedTicket: Ticket?
     let isBacklogReorderingEnabled: Bool
     let onMoveBacklogTickets: (IndexSet, Int) -> Void
@@ -470,15 +476,6 @@ private struct ProjectWorkspaceView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ProjectFiltersPanel(
-                selectedSizeFilter: $selectedSizeFilter,
-                selectedStateScope: $selectedStateScope,
-                searchText: $searchText
-            )
-            .frame(width: 220)
-
-            Divider()
-
             List(selection: isPreview ? .constant(nil) : $selectedTicketID) {
                 if recentDoneTickets.isEmpty == false {
                     Section {
@@ -529,7 +526,7 @@ private struct ProjectWorkspaceView: View {
         }
         .overlay(alignment: .bottomLeading) {
             if isBacklogReorderingEnabled == false {
-                Text("Backlog reordering is disabled while size/search filters are active.")
+                Text("Backlog reordering is disabled while search is active.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(8)
@@ -601,9 +598,8 @@ private struct ProjectWorkspaceView: View {
 }
 
 private enum TicketStateScope: String, CaseIterable, Identifiable {
-    case overview
-    case allDone
-    case everything
+    case active
+    case done
 
     var id: String {
         rawValue
@@ -611,40 +607,34 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .overview:
-            return "Overview"
-        case .allDone:
-            return "All Done"
-        case .everything:
-            return "Everything"
+        case .active:
+            return "Active"
+        case .done:
+            return "Done"
         }
     }
 
     var doneSectionTitle: String {
         switch self {
-        case .overview:
+        case .active:
             return "Recently Done ✅"
-        case .allDone:
-            return "All Done"
-        case .everything:
+        case .done:
             return "Done"
         }
     }
 
     func matches(_ status: TicketQuickStatus) -> Bool {
         switch self {
-        case .overview, .everything:
+        case .active:
             return true
-        case .allDone:
+        case .done:
             return status.isDone
         }
     }
 }
 
-private struct ProjectFiltersPanel: View {
-    @Binding var selectedSizeFilter: TicketSize?
+private struct ProjectFiltersPopover: View {
     @Binding var selectedStateScope: TicketStateScope
-    @Binding var searchText: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -657,20 +647,9 @@ private struct ProjectFiltersPanel: View {
                 }
             }
             .pickerStyle(.segmented)
-
-            Picker("Size", selection: $selectedSizeFilter) {
-                Text("All Sizes").tag(TicketSize?.none)
-                ForEach(TicketSize.allCases, id: \.self) { size in
-                    Text(size.title).tag(Optional(size))
-                }
-            }
-            .pickerStyle(.menu)
-
-            TextField("Search tickets", text: $searchText)
-
-            Spacer()
         }
         .padding(12)
+        .frame(minWidth: 240)
     }
 }
 
