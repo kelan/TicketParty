@@ -137,12 +137,9 @@ struct ProjectDetailView: View {
             isPreview: isPreview
         )
         .navigationTitle(project.name)
+        .searchable(text: $searchText, placement: .toolbar, prompt: "Search tickets")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                TextField("Search tickets", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 220)
-
                 Button {
                     isShowingFilterPopover.toggle()
                 } label: {
