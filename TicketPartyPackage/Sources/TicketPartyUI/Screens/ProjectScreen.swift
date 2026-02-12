@@ -805,21 +805,18 @@ private struct ProjectTicketDetailPanel: View {
                         .frame(minHeight: 140)
                     }
 
-                    TextEditor(text: $messageDraft)
-                        .font(.body)
-                        .frame(height: 68)
+                    TextField("Type a comment", text: $messageDraft)
+                        .textFieldStyle(.roundedBorder)
                         .disabled(isSending)
+                        .onSubmit {
+                            sendDraftIfPossible(ticket: ticket, project: project, isSending: isSending)
+                        }
 
                     HStack(spacing: 8) {
                         Button("Send") {
-                            let draft = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard draft.isEmpty == false else { return }
-                            messageDraft = ""
-                            Task {
-                                await codexViewModel.sendMessage(ticket: ticket, project: project, text: draft)
-                            }
+                            sendDraftIfPossible(ticket: ticket, project: project, isSending: isSending)
                         }
-                        .disabled(isSending || messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(isSending || trimmedMessageDraft.isEmpty)
 
                         if isSending {
                             Button("Stop") {
@@ -887,6 +884,20 @@ private struct ProjectTicketDetailPanel: View {
             try modelContext.save()
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+
+    private var trimmedMessageDraft: String {
+        messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func sendDraftIfPossible(ticket: Ticket, project: Project, isSending: Bool) {
+        guard isSending == false else { return }
+        let draft = trimmedMessageDraft
+        guard draft.isEmpty == false else { return }
+        messageDraft = ""
+        Task {
+            await codexViewModel.sendMessage(ticket: ticket, project: project, text: draft)
         }
     }
 }
