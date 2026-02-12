@@ -121,38 +121,56 @@ actor CodexSupervisorHealthChecker {
                 return .invalidRecord("Runtime record is missing instance token.")
             }
 
-            if Self.processExists(pid: record.pid) {
-                do {
-                    let hello = try performHelloHandshake(
-                        socketPath: record.controlEndpoint,
-                        expectedInstanceToken: record.instanceToken,
-                        minimumProtocolVersion: max(record.protocolVersion, 1)
-                    )
-                    guard hello.pid == record.pid else {
-                        return .handshakeFailed(
-                            "Handshake PID \(hello.pid) does not match runtime record PID \(record.pid)."
-                        )
-                    }
-                    guard hello.instanceToken == record.instanceToken else {
-                        return .handshakeFailed("Supervisor instance token mismatch during handshake.")
-                    }
-                    return .healthy(pid: hello.pid, protocolVersion: hello.protocolVersion)
-                } catch let error as HandshakeError {
-                    switch error {
-                    case let .unreachable(message):
+            let processIsAlive = Self.processExists(pid: record.pid)
+            do {
+                let hello = try performHelloHandshakeStrictThenRelaxed(
+                    socketPath: record.controlEndpoint,
+                    expectedInstanceToken: record.instanceToken,
+                    minimumProtocolVersion: max(record.protocolVersion, 1)
+                )
+                return .healthy(pid: hello.pid, protocolVersion: hello.protocolVersion)
+            } catch let error as HandshakeError {
+                switch error {
+                case let .unreachable(message):
+                    if processIsAlive {
                         return .unreachable(pid: record.pid, endpoint: record.controlEndpoint, reason: message)
-                    case let .invalidSocketPath(path):
-                        return .invalidRecord("Socket path in runtime record is invalid: \(path)")
-                    case let .failed(message):
-                        return .handshakeFailed(message)
                     }
-                } catch {
-                    return .handshakeFailed(error.localizedDescription)
+                    return .staleRecord(pid: record.pid)
+                case let .invalidSocketPath(path):
+                    return .invalidRecord("Socket path in runtime record is invalid: \(path)")
+                case let .failed(message):
+                    return .handshakeFailed(message)
                 }
+            } catch {
+                return .handshakeFailed(error.localizedDescription)
             }
-            return .staleRecord(pid: record.pid)
         } catch {
             return .invalidRecord(error.localizedDescription)
+        }
+    }
+
+    private func performHelloHandshakeStrictThenRelaxed(
+        socketPath: String,
+        expectedInstanceToken: String,
+        minimumProtocolVersion: Int
+    ) throws -> HelloResponse {
+        do {
+            return try performHelloHandshake(
+                socketPath: socketPath,
+                expectedInstanceToken: expectedInstanceToken,
+                minimumProtocolVersion: minimumProtocolVersion
+            )
+        } catch let error as HandshakeError {
+            switch error {
+            case .failed:
+                return try performHelloHandshake(
+                    socketPath: socketPath,
+                    expectedInstanceToken: nil,
+                    minimumProtocolVersion: 1
+                )
+            case .unreachable, .invalidSocketPath:
+                throw error
+            }
         }
     }
 
@@ -174,7 +192,7 @@ actor CodexSupervisorHealthChecker {
 
     private func performHelloHandshake(
         socketPath: String,
-        expectedInstanceToken: String,
+        expectedInstanceToken: String?,
         minimumProtocolVersion: Int
     ) throws -> HelloResponse {
         let normalizedSocketPath = Self.expandPath(socketPath)

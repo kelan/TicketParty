@@ -356,6 +356,52 @@ struct TicketPartyTests {
         #expect(store.loadSelectedTicketID(for: projectID) == nil)
     }
 
+    @Test
+    func supervisorHealthChecker_instanceTokenMismatch_fallsBackToHealthy() async throws {
+        let rootURL = URL(fileURLWithPath: "/tmp", isDirectory: true)
+            .appendingPathComponent("SupervisorHealthStub-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let recordPath = rootURL.appendingPathComponent("supervisor.json", isDirectory: false).path
+        let socketPath = rootURL.appendingPathComponent("supervisor.sock", isDirectory: false).path
+
+        let liveToken = "LIVE-TOKEN"
+        let recordToken = "STALE-TOKEN"
+        let expectedProtocol = 2
+        let expectedPID = getpid()
+
+        let server = try SupervisorHelloStub(
+            socketPath: socketPath,
+            instanceToken: liveToken,
+            protocolVersion: expectedProtocol,
+            pid: expectedPID,
+            maxConnections: 2
+        )
+        try server.start()
+        defer { server.stop() }
+
+        let runtimeRecord: [String: Any] = [
+            "pid": Int(expectedPID),
+            "protocolVersion": expectedProtocol,
+            "controlEndpoint": socketPath,
+            "instanceToken": recordToken,
+        ]
+        let runtimeData = try JSONSerialization.data(withJSONObject: runtimeRecord)
+        try runtimeData.write(to: URL(fileURLWithPath: recordPath), options: .atomic)
+
+        let checker = CodexSupervisorHealthChecker(runtimeRecordPath: recordPath)
+        let status = await checker.check()
+
+        guard case let .healthy(pid, protocolVersion) = status else {
+            Issue.record("Expected healthy status, got '\(status.title)' (\(status.detail)).")
+            return
+        }
+
+        #expect(pid == expectedPID)
+        #expect(protocolVersion == expectedProtocol)
+    }
+
     private func fetchRun(runID: UUID) throws -> TicketTranscriptRun? {
         let container = try TicketPartyPersistence.makeSharedContainer()
         let context = ModelContext(container)
@@ -383,6 +429,245 @@ struct TicketPartyTests {
             }
         }
         throw NSError(domain: "TicketPartyTests", code: 1, userInfo: [NSLocalizedDescriptionKey: "Loop did not reach terminal state in time."])
+    }
+}
+
+private final class SupervisorHelloStub: @unchecked Sendable {
+    private let socketPath: String
+    private let instanceToken: String
+    private let protocolVersion: Int
+    private let pid: Int32
+    private let maxConnections: Int
+    private var serverFD: Int32 = -1
+    private var workItem: DispatchWorkItem?
+
+    init(
+        socketPath: String,
+        instanceToken: String,
+        protocolVersion: Int,
+        pid: Int32,
+        maxConnections: Int
+    ) throws {
+        self.socketPath = socketPath
+        self.instanceToken = instanceToken
+        self.protocolVersion = protocolVersion
+        self.pid = pid
+        self.maxConnections = maxConnections
+        _ = Darwin.unlink(socketPath)
+    }
+
+    deinit {
+        stop()
+    }
+
+    func start() throws {
+        let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd >= 0 else {
+            throw NSError(
+                domain: "SupervisorHelloStub",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to create socket: \(String(cString: strerror(errno)))."]
+            )
+        }
+
+        var address = sockaddr_un()
+        address.sun_family = sa_family_t(AF_UNIX)
+        #if os(macOS)
+            address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+        #endif
+
+        let socketPathBytes = socketPath.utf8CString
+        let maxPathLength = MemoryLayout.size(ofValue: address.sun_path)
+        guard socketPathBytes.count <= maxPathLength else {
+            Darwin.close(fd)
+            throw NSError(
+                domain: "SupervisorHelloStub",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Socket path too long: \(socketPath)"]
+            )
+        }
+
+        withUnsafeMutableBytes(of: &address.sun_path) { rawBuffer in
+            rawBuffer.initializeMemory(as: CChar.self, repeating: 0)
+            socketPathBytes.withUnsafeBytes { sourceBuffer in
+                if let destination = rawBuffer.baseAddress, let source = sourceBuffer.baseAddress {
+                    memcpy(destination, source, socketPathBytes.count)
+                }
+            }
+        }
+
+        let bindResult = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                Darwin.bind(fd, sockaddrPointer, socklen_t(MemoryLayout<sockaddr_un>.size))
+            }
+        }
+
+        guard bindResult == 0 else {
+            let message = String(cString: strerror(errno))
+            Darwin.close(fd)
+            throw NSError(
+                domain: "SupervisorHelloStub",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to bind socket: \(message)"]
+            )
+        }
+
+        guard Darwin.listen(fd, 8) == 0 else {
+            let message = String(cString: strerror(errno))
+            Darwin.close(fd)
+            throw NSError(
+                domain: "SupervisorHelloStub",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Failed to listen on socket: \(message)"]
+            )
+        }
+
+        serverFD = fd
+        let workItem = DispatchWorkItem { [fd, instanceToken, protocolVersion, pid, maxConnections] in
+            var servedConnections = 0
+            while servedConnections < maxConnections {
+                var addressStorage = sockaddr()
+                var addressLength = socklen_t(MemoryLayout<sockaddr>.size)
+                let clientFD = withUnsafeMutablePointer(to: &addressStorage) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockaddrPointer in
+                        Darwin.accept(fd, sockaddrPointer, &addressLength)
+                    }
+                }
+
+                if clientFD < 0 {
+                    if errno == EINTR {
+                        continue
+                    }
+                    break
+                }
+
+                Self.respondToHelloRequest(
+                    clientFD: clientFD,
+                    instanceToken: instanceToken,
+                    protocolVersion: protocolVersion,
+                    pid: pid
+                )
+                Darwin.close(clientFD)
+                servedConnections += 1
+            }
+        }
+        self.workItem = workItem
+        DispatchQueue.global(qos: .userInitiated).async(execute: workItem)
+    }
+
+    func stop() {
+        if serverFD >= 0 {
+            Darwin.close(serverFD)
+            serverFD = -1
+        }
+        workItem?.cancel()
+        workItem = nil
+        _ = Darwin.unlink(socketPath)
+    }
+
+    private static func respondToHelloRequest(
+        clientFD: Int32,
+        instanceToken: String,
+        protocolVersion: Int,
+        pid: Int32
+    ) {
+        guard
+            let line = readLine(from: clientFD),
+            let data = line.data(using: .utf8),
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return
+        }
+
+        let minimumProtocol = object["minProtocolVersion"] as? Int ?? 1
+        if protocolVersion < minimumProtocol {
+            sendLine(
+                [
+                    "type": "error",
+                    "message": "Protocol version \(protocolVersion) is below required minimum \(minimumProtocol).",
+                ],
+                to: clientFD
+            )
+            return
+        }
+
+        if let expectedToken = object["expectedInstanceToken"] as? String, expectedToken != instanceToken {
+            sendLine(
+                [
+                    "type": "error",
+                    "message": "Instance token mismatch.",
+                ],
+                to: clientFD
+            )
+            return
+        }
+
+        sendLine(
+            [
+                "type": "hello.ok",
+                "pid": Int(pid),
+                "protocolVersion": protocolVersion,
+                "instanceToken": instanceToken,
+                "serverTimeEpochMS": Int64(Date().timeIntervalSince1970 * 1_000),
+            ],
+            to: clientFD
+        )
+    }
+
+    private static func sendLine(_ object: [String: Any], to fd: Int32) {
+        guard var payload = try? JSONSerialization.data(withJSONObject: object) else { return }
+        payload.append(0x0A)
+        _ = payload.withUnsafeBytes { rawBuffer in
+            guard let baseAddress = rawBuffer.baseAddress else { return false }
+            var bytesWritten = 0
+            while bytesWritten < payload.count {
+                let result = Darwin.write(fd, baseAddress.advanced(by: bytesWritten), payload.count - bytesWritten)
+                if result > 0 {
+                    bytesWritten += result
+                } else if result < 0, errno == EINTR {
+                    continue
+                } else {
+                    return false
+                }
+            }
+            return true
+        }
+    }
+
+    private static func readLine(from fd: Int32, maxBytes: Int = 16_384) -> String? {
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1_024)
+
+        while data.count < maxBytes {
+            let count = Darwin.read(fd, &buffer, buffer.count)
+            if count > 0 {
+                data.append(buffer, count: count)
+                if data.contains(0x0A) {
+                    break
+                }
+            } else if count == 0 {
+                break
+            } else if errno == EINTR {
+                continue
+            } else {
+                return nil
+            }
+        }
+
+        guard data.isEmpty == false else { return nil }
+
+        let lineData: Data
+        if let newlineIndex = data.firstIndex(of: 0x0A) {
+            var candidate = data.prefix(upTo: newlineIndex)
+            if candidate.last == 0x0D {
+                candidate = candidate.dropLast()
+            }
+            lineData = Data(candidate)
+        } else {
+            lineData = data
+        }
+
+        return String(decoding: lineData, as: UTF8.self)
     }
 }
 
