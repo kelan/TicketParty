@@ -43,7 +43,7 @@ struct TicketPartyApp: App {
                 Button("Move Selected Ticket to Top of Backlog") {
                     NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketToTopRequested, object: nil)
                 }
-                .keyboardShortcut(.upArrow, modifiers: [.command, .control, .shift])
+                .keyboardShortcut(.upArrow, modifiers: [.command, .control, .option])
 
                 Button("Move Selected Ticket Up") {
                     NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketUpRequested, object: nil)

@@ -231,6 +231,7 @@ struct ProjectDetailView: View {
             requestEditSelectedTicket()
         }
         .onAppear {
+            codexViewModel.configure(modelContext: modelContext)
             guard isPreview == false else { return }
             if selectedTicketID == nil {
                 selectedTicketID = visibleTickets.first?.id
@@ -524,6 +525,7 @@ private struct ProjectWorkspaceView: View {
 
             ProjectTicketDetailPanel(project: project, ticket: selectedTicket)
                 .frame(width: 280)
+                .frame(maxHeight: .infinity, alignment: .top)
         }
         .overlay(alignment: .bottomLeading) {
             if isBacklogReorderingEnabled == false {
@@ -683,151 +685,165 @@ private struct ProjectTicketDetailPanel: View {
     var body: some View {
         Group {
             if let ticket {
-                Form {
-                    Section("Ticket") {
-                        LabeledContent("ID", value: ticket.displayID)
+                ticketDetailLayout(ticket: ticket)
+                    .task(id: ticket.id) {
+                        codexViewModel.loadConversation(ticketID: ticket.id)
                     }
-
-                    Section("Status") {
-                        LabeledContent("Current", value: ticket.quickStatus.title)
-
-                        TicketStatusQuickActions(currentStatus: ticket.quickStatus) { status in
-                            guard status != ticket.quickStatus else { return }
-                            ticket.quickStatus = status
-                            persist(ticket: ticket)
-                        }
+                    .onChange(of: ticket.id) { _, _ in
+                        messageDraft = ""
+                        isRawTranscriptExpanded = false
                     }
-
-                    Section("Details") {
-                        Picker("Size", selection: sizeBinding(for: ticket)) {
-                            ForEach(TicketSize.allCases, id: \.self) { size in
-                                Text(size.title).tag(size)
-                            }
-                        }
-                    }
-
-                    Section("Codex Conversation") {
-                        let isSending = codexViewModel.ticketIsSending[ticket.id] == true
-                        let modeBinding = Binding<TicketConversationMode>(
-                            get: { codexViewModel.conversationMode(for: ticket.id) },
-                            set: { newMode in
-                                codexViewModel.setConversationMode(ticketID: ticket.id, mode: newMode)
-                            }
-                        )
-                        let messages = codexViewModel.conversationMessages(for: ticket.id)
-
-                        Picker("Mode", selection: modeBinding) {
-                            Text("Plan").tag(TicketConversationMode.plan)
-                            Text("Implement").tag(TicketConversationMode.implement)
-                        }
-                        .pickerStyle(.segmented)
-                        .disabled(isSending)
-
-                        if modeBinding.wrappedValue == .plan {
-                            Button("Start Implementation") {
-                                Task {
-                                    await codexViewModel.startImplementation(ticket: ticket, project: project)
-                                }
-                            }
-                            .disabled(isSending)
-                        }
-
-                        if codexViewModel.ticketConversationLoading[ticket.id] == true {
-                            ProgressView("Loading conversation...")
-                                .controlSize(.small)
-                        }
-
-                        ScrollView {
-                            if messages.isEmpty {
-                                Text("No conversation yet.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            } else {
-                                LazyVStack(alignment: .leading, spacing: 8) {
-                                    ForEach(messages) { message in
-                                        TicketConversationMessageRow(message: message)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
-                        }
-                        .frame(minHeight: 180, maxHeight: 320)
-
-                        TextEditor(text: $messageDraft)
-                            .font(.body)
-                            .frame(height: 68)
-                            .disabled(isSending)
-
-                        HStack(spacing: 8) {
-                            Button("Send") {
-                                if ticket.quickStatus != .inProgress {
-                                    ticket.quickStatus = .inProgress
-                                    persist(ticket: ticket)
-                                }
-                                let draft = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                                guard draft.isEmpty == false else { return }
-                                messageDraft = ""
-                                Task {
-                                    await codexViewModel.sendMessage(ticket: ticket, project: project, text: draft)
-                                }
-                            }
-                            .disabled(isSending || messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                            if isSending {
-                                Button("Stop") {
-                                    Task {
-                                        await codexViewModel.stop(ticket: ticket, project: project)
-                                    }
-                                }
-                                .tint(.red)
-
-                                ProgressView("Sending...")
-                                    .controlSize(.small)
-                                    .font(.caption)
-                            } else if let error = codexViewModel.ticketErrors[ticket.id], error.isEmpty == false {
-                                Circle()
-                                    .fill(Color.red)
-                                    .frame(width: 8, height: 8)
-                            }
-                        }
-
-                        if let error = codexViewModel.ticketErrors[ticket.id], error.isEmpty == false {
-                            Text(error)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-
-                        DisclosureGroup("Raw Transcript", isExpanded: $isRawTranscriptExpanded) {
-                            ScrollView {
-                                let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
-                                Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                                if outputSnapshot.isTruncated {
-                                    Text("Showing latest output segment.")
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                                }
-                            }
-                            .frame(minHeight: 140)
-                        }
-                    }
-                }
-                .task(id: ticket.id) {
-                    codexViewModel.loadConversation(ticketID: ticket.id)
-                }
-                .onChange(of: ticket.id) { _, _ in
-                    messageDraft = ""
-                    isRawTranscriptExpanded = false
-                }
             } else {
                 ContentUnavailableView("Select a Ticket", systemImage: "doc.text")
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private func ticketDetailLayout(ticket: Ticket) -> some View {
+        let isSending = codexViewModel.ticketIsSending[ticket.id] == true
+        let modeBinding = Binding<TicketConversationMode>(
+            get: { codexViewModel.conversationMode(for: ticket.id) },
+            set: { newMode in
+                codexViewModel.setConversationMode(ticketID: ticket.id, mode: newMode)
+            }
+        )
+        let messages = codexViewModel.conversationMessages(for: ticket.id)
+        let error = codexViewModel.ticketErrors[ticket.id]
+
+        VStack(alignment: .leading, spacing: 12) {
+            GroupBox("Ticket") {
+                LabeledContent("ID", value: ticket.displayID)
+            }
+
+            GroupBox("Status") {
+                VStack(alignment: .leading, spacing: 8) {
+                    LabeledContent("Current", value: ticket.quickStatus.title)
+
+                    TicketStatusQuickActions(currentStatus: ticket.quickStatus) { status in
+                        guard status != ticket.quickStatus else { return }
+                        ticket.quickStatus = status
+                        persist(ticket: ticket)
+                    }
+                }
+            }
+
+            GroupBox("Details") {
+                Picker("Size", selection: sizeBinding(for: ticket)) {
+                    ForEach(TicketSize.allCases, id: \.self) { size in
+                        Text(size.title).tag(size)
+                    }
+                }
+            }
+
+            GroupBox("Codex Conversation") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Mode", selection: modeBinding) {
+                        Text("Plan").tag(TicketConversationMode.plan)
+                        Text("Implement").tag(TicketConversationMode.implement)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(isSending)
+
+                    if modeBinding.wrappedValue == .plan {
+                        Button("Start Implementation") {
+                            Task {
+                                await codexViewModel.startImplementation(ticket: ticket, project: project)
+                            }
+                        }
+                        .disabled(isSending)
+                    }
+
+                    if codexViewModel.ticketConversationLoading[ticket.id] == true {
+                        ProgressView("Loading conversation...")
+                            .controlSize(.small)
+                    }
+
+                    ScrollView {
+                        if messages.isEmpty {
+                            Text("No conversation yet.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(messages) { message in
+                                    TicketConversationMessageRow(message: message)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                    DisclosureGroup("Raw Transcript", isExpanded: $isRawTranscriptExpanded) {
+                        ScrollView {
+                            let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
+                            Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
+                                .font(.system(.caption, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                            if outputSnapshot.isTruncated {
+                                Text("Showing latest output segment.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                            }
+                        }
+                        .frame(minHeight: 140)
+                    }
+
+                    TextEditor(text: $messageDraft)
+                        .font(.body)
+                        .frame(height: 68)
+                        .disabled(isSending)
+
+                    HStack(spacing: 8) {
+                        Button("Send") {
+                            if ticket.quickStatus != .inProgress {
+                                ticket.quickStatus = .inProgress
+                                persist(ticket: ticket)
+                            }
+                            let draft = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard draft.isEmpty == false else { return }
+                            messageDraft = ""
+                            Task {
+                                await codexViewModel.sendMessage(ticket: ticket, project: project, text: draft)
+                            }
+                        }
+                        .disabled(isSending || messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                        if isSending {
+                            Button("Stop") {
+                                Task {
+                                    await codexViewModel.stop(ticket: ticket, project: project)
+                                }
+                            }
+                            .tint(.red)
+
+                            ProgressView("Sending...")
+                                .controlSize(.small)
+                                .font(.caption)
+                        } else if let error, error.isEmpty == false {
+                            Circle()
+                                .fill(.red)
+                                .frame(width: 8, height: 8)
+                        }
+                    }
+
+                    if let error, error.isEmpty == false {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .padding(12)
     }
 
     private func sizeBinding(for ticket: Ticket) -> Binding<TicketSize> {
