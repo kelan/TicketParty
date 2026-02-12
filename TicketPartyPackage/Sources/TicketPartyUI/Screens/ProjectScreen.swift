@@ -833,10 +833,6 @@ private struct ProjectTicketDetailPanel: View {
 
                     HStack(spacing: 8) {
                         Button("Send") {
-                            if ticket.quickStatus != .inProgress {
-                                ticket.quickStatus = .inProgress
-                                persist(ticket: ticket)
-                            }
                             let draft = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
                             guard draft.isEmpty == false else { return }
                             messageDraft = ""

@@ -238,6 +238,8 @@ struct TicketPartyTests {
     @MainActor
     func conversationViewModel_startImplementation_switchesModeAndAddsHandoffMessage() async throws {
         _ = try TestEnvironment()
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
         let conversationStore = TicketConversationStore()
         let ticket = Ticket(
             ticketNumber: 42,
@@ -246,6 +248,9 @@ struct TicketPartyTests {
             description: "Conversation handoff"
         )
         let project = Project(name: "Sample")
+        context.insert(project)
+        context.insert(ticket)
+        try context.save()
         _ = try conversationStore.appendUserMessage(ticketID: ticket.id, text: "Let's plan this.")
 
         let viewModel = CodexViewModel(
@@ -253,10 +258,13 @@ struct TicketPartyTests {
             conversationStore: conversationStore,
             startBackgroundTasks: false
         )
+        viewModel.configure(modelContext: context)
 
         await viewModel.startImplementation(ticket: ticket, project: project)
 
         #expect(try conversationStore.mode(ticketID: ticket.id) == .implement)
+        let persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .inProgress)
         let messages = try conversationStore.messages(ticketID: ticket.id)
         #expect(messages.contains(where: { $0.role == .system && $0.content == "Mode switched to implement." }))
         #expect(messages.contains(where: { $0.role == .user && $0.content.contains("Start implementation now using the agreed plan.") }))
@@ -406,7 +414,8 @@ struct TicketPartyTests {
 
         await viewModel.startLoop(project: project, tickets: [ticket])
 
-        #expect(ticket.quickStatus == .inProgress)
+        let persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .inProgress)
     }
 
     @Test
@@ -438,12 +447,13 @@ struct TicketPartyTests {
 
         await viewModel.startLoop(project: project, tickets: [ticket])
 
-        #expect(ticket.quickStatus == .inProgress)
+        let persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .inProgress)
     }
 
     @Test
     @MainActor
-    func codexViewModel_missingContext_triggersDebugAssertionHandler_forLoopTaskStartStatusUpdate() async {
+    func codexViewModel_missingContext_triggersDebugAssertionHandler_forLoopTaskStartStatusUpdate() async throws {
         var assertionMessages: [String] = []
         let viewModel = CodexViewModel(
             manager: CodexManager(resumeSubscriptionsOnInit: false),
@@ -671,6 +681,17 @@ struct TicketPartyTests {
         let descriptor = FetchDescriptor<TicketTranscriptRun>(
             predicate: #Predicate<TicketTranscriptRun> { run in
                 run.id == runID
+            }
+        )
+        return try context.fetch(descriptor).first
+    }
+
+    private func fetchTicket(ticketID: UUID) throws -> Ticket? {
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
+        let descriptor = FetchDescriptor<Ticket>(
+            predicate: #Predicate<Ticket> { ticket in
+                ticket.id == ticketID
             }
         )
         return try context.fetch(descriptor).first

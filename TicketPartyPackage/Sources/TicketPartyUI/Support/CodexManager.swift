@@ -27,6 +27,20 @@ enum CodexProjectStatus: Sendable, Equatable {
 }
 
 actor CodexManager {
+    enum TaskMode: String, Sendable {
+        case plan
+        case implement
+
+        init(conversationMode: TicketConversationMode) {
+            switch conversationMode {
+            case .plan:
+                self = .plan
+            case .implement:
+                self = .implement
+            }
+        }
+    }
+
     enum Event: Sendable {
         case statusChanged(projectID: UUID, status: CodexProjectStatus)
         case ticketStarted(ticketID: UUID)
@@ -63,6 +77,7 @@ actor CodexManager {
         let projectID: String
         let taskID: String
         let kind: String
+        let mode: String
         let ticketID: String?
         let idempotencyKey: String?
         let workingDirectory: String?
@@ -135,10 +150,15 @@ actor CodexManager {
     }
 
     private struct WorkerSnapshot: Sendable {
+        struct ActiveRequest: Sendable {
+            let requestID: UUID
+            let ticketID: UUID?
+            let mode: TaskMode
+        }
+
         let projectID: UUID
         let isRunning: Bool
-        let activeRequestID: UUID?
-        let activeTicketID: UUID?
+        let activeRequests: [ActiveRequest]
     }
 
     nonisolated let events: AsyncStream<Event>
@@ -215,6 +235,7 @@ actor CodexManager {
             taskID: taskID,
             ticketID: ticketID,
             kind: kind,
+            mode: .implement,
             idempotencyKey: idempotencyKey,
             workingDirectory: resolvedWorkingDirectory,
             prompt: prompt,
@@ -250,11 +271,24 @@ actor CodexManager {
         )
     }
 
+    func cancelTicketTasks(projectID: UUID, ticketID: UUID) async {
+        var activeTaskIDs: [UUID] = []
+        for (taskID, mappedTicketID) in requestToTicket {
+            guard mappedTicketID == ticketID, requestToProject[taskID] == projectID else { continue }
+            activeTaskIDs.append(taskID)
+        }
+
+        for taskID in activeTaskIDs {
+            await cancelTask(projectID: projectID, taskID: taskID)
+        }
+    }
+
     func sendTicket(
         projectID: UUID,
         workingDirectory: String?,
         ticketID: UUID,
         idempotencyKey: String,
+        mode: TicketConversationMode,
         prompt: String
     ) async throws {
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
@@ -264,6 +298,7 @@ actor CodexManager {
             projectID: projectID,
             ticketID: ticketID,
             kind: "codex.ticket",
+            mode: TaskMode(conversationMode: mode),
             idempotencyKey: idempotencyKey,
             workingDirectory: resolvedWorkingDirectory,
             prompt: prompt,
@@ -292,6 +327,7 @@ actor CodexManager {
         workingDirectory: String?,
         ticketID: UUID,
         idempotencyKey: String,
+        mode: TicketConversationMode,
         title: String,
         description: String
     ) async throws {
@@ -300,6 +336,7 @@ actor CodexManager {
             workingDirectory: workingDirectory,
             ticketID: ticketID,
             idempotencyKey: idempotencyKey,
+            mode: mode,
             prompt: "\(title)\n\(description)"
         )
     }
@@ -309,6 +346,7 @@ actor CodexManager {
         taskID: UUID = UUID(),
         ticketID: UUID,
         kind: String,
+        mode: TaskMode,
         idempotencyKey: String,
         workingDirectory: String,
         prompt: String?,
@@ -318,6 +356,7 @@ actor CodexManager {
             projectID: projectID.uuidString,
             taskID: taskID.uuidString,
             kind: kind,
+            mode: mode.rawValue,
             ticketID: ticketID.uuidString,
             idempotencyKey: idempotencyKey,
             workingDirectory: workingDirectory,
@@ -326,57 +365,41 @@ actor CodexManager {
         )
 
         let payloadLine = try Self.encodeLine(request)
-        let maxAttempts = 4
-        var attempt = 0
-
-        while true {
-            attempt += 1
-
-            let responseObject: [String: Any]
-            do {
-                responseObject = try Self.sendRequest(
-                    payload: payloadLine,
-                    socketPath: supervisorSocketPath,
-                    receiveTimeout: 5,
-                    sendTimeout: 5
-                )
-            } catch let error as ManagerError {
-                throw error
-            } catch {
-                throw ManagerError.supervisorUnavailable(error.localizedDescription)
-            }
-
-            guard let type = responseObject["type"] as? String else {
-                throw ManagerError.invalidResponse("Missing response type.")
-            }
-
-            if type == "error" {
-                let message = responseObject["message"] as? String ?? "Unknown supervisor error."
-                if Self.isBusyInFlightMessage(message) {
-                    if let activeTaskID = try reattachToInFlightRequest(projectID: projectID, requestedTicketID: ticketID) {
-                        return SubmitTaskResult(taskID: activeTaskID, deduplicated: true)
-                    }
-                    if attempt < maxAttempts {
-                        try? await Task.sleep(for: .milliseconds(250))
-                        continue
-                    }
-                }
-                throw ManagerError.requestFailed(message)
-            }
-
-            guard type == "submitTask.ok" else {
-                throw ManagerError.invalidResponse("Unexpected submitTask response type '\(type)'.")
-            }
-
-            let resolvedTaskID: UUID
-            if let taskIDRaw = responseObject["taskID"] as? String, let parsed = UUID(uuidString: taskIDRaw) {
-                resolvedTaskID = parsed
-            } else {
-                resolvedTaskID = taskID
-            }
-            let deduplicated = responseObject["deduplicated"] as? Bool ?? false
-            return SubmitTaskResult(taskID: resolvedTaskID, deduplicated: deduplicated)
+        let responseObject: [String: Any]
+        do {
+            responseObject = try Self.sendRequest(
+                payload: payloadLine,
+                socketPath: supervisorSocketPath,
+                receiveTimeout: 5,
+                sendTimeout: 5
+            )
+        } catch let error as ManagerError {
+            throw error
+        } catch {
+            throw ManagerError.supervisorUnavailable(error.localizedDescription)
         }
+
+        guard let type = responseObject["type"] as? String else {
+            throw ManagerError.invalidResponse("Missing response type.")
+        }
+
+        if type == "error" {
+            let message = responseObject["message"] as? String ?? "Unknown supervisor error."
+            throw ManagerError.requestFailed(message)
+        }
+
+        guard type == "submitTask.ok" else {
+            throw ManagerError.invalidResponse("Unexpected submitTask response type '\(type)'.")
+        }
+
+        let resolvedTaskID: UUID
+        if let taskIDRaw = responseObject["taskID"] as? String, let parsed = UUID(uuidString: taskIDRaw) {
+            resolvedTaskID = parsed
+        } else {
+            resolvedTaskID = taskID
+        }
+        let deduplicated = responseObject["deduplicated"] as? Bool ?? false
+        return SubmitTaskResult(taskID: resolvedTaskID, deduplicated: deduplicated)
     }
 
     private func waitForTaskCompletion(taskID: UUID) async -> TaskTerminalResult {
@@ -616,16 +639,17 @@ actor CodexManager {
                 setStatus(.running, for: snapshot.projectID)
             }
 
-            if
-                let activeRequestID = snapshot.activeRequestID,
-                let activeTicketID = snapshot.activeTicketID
-            {
-                requestToTicket[activeRequestID] = activeTicketID
-                requestToProject[activeRequestID] = snapshot.projectID
+            var startedTickets: Set<UUID> = []
+            for activeRequest in snapshot.activeRequests {
+                if let ticketID = activeRequest.ticketID {
+                    requestToTicket[activeRequest.requestID] = ticketID
+                    requestToProject[activeRequest.requestID] = snapshot.projectID
+                    startedTickets.insert(ticketID)
+                }
             }
 
-            if let activeTicketID = snapshot.activeTicketID {
-                continuation.yield(.ticketStarted(ticketID: activeTicketID))
+            for ticketID in startedTickets.sorted(by: { $0.uuidString < $1.uuidString }) {
+                continuation.yield(.ticketStarted(ticketID: ticketID))
             }
         }
     }
@@ -699,16 +723,6 @@ actor CodexManager {
         )
     }
 
-    private func reattachToInFlightRequest(projectID: UUID, requestedTicketID: UUID) throws -> UUID? {
-        guard let snapshot = try fetchWorkerSnapshots(projectID: projectID).first else {
-            return nil
-        }
-
-        applyWorkerSnapshots([snapshot])
-        guard snapshot.activeTicketID == requestedTicketID else { return nil }
-        return snapshot.activeRequestID
-    }
-
     private func fetchWorkerSnapshots(projectID: UUID?) throws -> [WorkerSnapshot] {
         let request = WorkerStatusRequest(projectID: projectID?.uuidString)
         let payload = try Self.encodeLine(request)
@@ -727,7 +741,7 @@ actor CodexManager {
             throw ManagerError.invalidResponse("workerStatus response missing worker list.")
         }
 
-        return workerArray.compactMap { worker in
+        return workerArray.compactMap { worker -> WorkerSnapshot? in
             guard
                 let projectIDRaw = worker["projectID"] as? String,
                 let resolvedProjectID = UUID(uuidString: projectIDRaw)
@@ -736,13 +750,22 @@ actor CodexManager {
             }
 
             let isRunning = worker["isRunning"] as? Bool ?? false
-            let activeRequestID = parseUUID(worker["activeRequestID"] as? String)
-            let activeTicketID = parseUUID(worker["activeTicketID"] as? String)
+            let activeRequests = (worker["activeRequests"] as? [[String: Any]] ?? []).compactMap { request -> WorkerSnapshot.ActiveRequest? in
+                guard
+                    let requestIDRaw = request["requestID"] as? String,
+                    let requestID = UUID(uuidString: requestIDRaw),
+                    let modeRaw = request["mode"] as? String,
+                    let mode = TaskMode(rawValue: modeRaw)
+                else {
+                    return nil
+                }
+                let ticketID = parseUUID(request["ticketID"] as? String)
+                return WorkerSnapshot.ActiveRequest(requestID: requestID, ticketID: ticketID, mode: mode)
+            }
             return WorkerSnapshot(
                 projectID: resolvedProjectID,
                 isRunning: isRunning,
-                activeRequestID: activeRequestID,
-                activeTicketID: activeTicketID
+                activeRequests: activeRequests
             )
         }
     }
@@ -1073,10 +1096,6 @@ actor CodexManager {
         try? data.write(to: url, options: .atomic)
     }
 
-    private nonisolated static func isBusyInFlightMessage(_ message: String) -> Bool {
-        message.localizedCaseInsensitiveContains("already has in-flight request")
-    }
-
     private enum SocketReadResult {
         case line(String)
         case timeout
@@ -1231,6 +1250,7 @@ final class CodexViewModel {
 
         let runID: UUID
         let prompt: String
+        let mode: TicketConversationMode
 
         do {
             _ = try conversationStore.ensureThread(ticketID: ticketID)
@@ -1246,6 +1266,7 @@ final class CodexViewModel {
                 windowCount: replayWindowCount,
                 maxSummaryChars: replaySummaryLimit
             )
+            mode = replay.mode
             ticketConversationModes[ticketID] = replay.mode
             ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
             prompt = conversationPrompt(
@@ -1271,6 +1292,7 @@ final class CodexViewModel {
                 workingDirectory: project.workingDirectory,
                 ticketID: ticketID,
                 idempotencyKey: idempotencyKey,
+                mode: mode,
                 prompt: prompt
             )
         } catch {
@@ -1319,6 +1341,7 @@ final class CodexViewModel {
                 windowCount: replayWindowCount,
                 maxSummaryChars: replaySummaryLimit
             )
+            setTicketStatus(ticketID: ticketID, status: .inProgress)
             ticketConversationModes[ticketID] = .implement
             ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
 
@@ -1332,28 +1355,24 @@ final class CodexViewModel {
     func stop(ticket: Ticket, project: Project) async {
         let ticketID = ticket.id
 
-        do {
-            try await manager.stopWorker(projectID: project.id)
-            if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
-                try? transcriptStore.completeRun(runID: runID, success: false, summary: "Cancelled by user.")
-            }
-            if activeAssistantMessageByTicketID[ticketID] != nil {
-                do {
-                    try conversationStore.completeAssistantMessage(
-                        ticketID: ticketID,
-                        success: false,
-                        errorSummary: "Cancelled by user."
-                    )
-                    ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
-                } catch {
-                    NSLog("Failed to mark assistant message as cancelled: %@", error.localizedDescription)
-                }
-            }
-            activeAssistantMessageByTicketID.removeValue(forKey: ticketID)
-            setTicketSending(false, for: ticketID)
-        } catch {
-            ticketErrors[ticketID] = error.localizedDescription
+        await manager.cancelTicketTasks(projectID: project.id, ticketID: ticketID)
+        if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
+            try? transcriptStore.completeRun(runID: runID, success: false, summary: "Cancelled by user.")
         }
+        if activeAssistantMessageByTicketID[ticketID] != nil {
+            do {
+                try conversationStore.completeAssistantMessage(
+                    ticketID: ticketID,
+                    success: false,
+                    errorSummary: "Cancelled by user."
+                )
+                ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+            } catch {
+                NSLog("Failed to mark assistant message as cancelled: %@", error.localizedDescription)
+            }
+        }
+        activeAssistantMessageByTicketID.removeValue(forKey: ticketID)
+        setTicketSending(false, for: ticketID)
     }
 
     func startLoop(project: Project, tickets: [Ticket]) async {

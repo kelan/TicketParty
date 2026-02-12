@@ -102,12 +102,18 @@ private struct ControlRequest: Decodable {
     let requestID: String?
     let taskID: String?
     let kind: String?
+    let mode: String?
     let idempotencyKey: String?
     let payload: [String: String]?
     let fromEventID: Int64?
     let upToEventID: Int64?
     let workingDirectory: String?
     let prompt: String?
+}
+
+private enum TaskMode: String, Codable {
+    case plan
+    case implement
 }
 
 private struct HelloResponse: Encodable {
@@ -135,10 +141,16 @@ private struct ErrorResponse: Encodable {
 }
 
 private struct WorkerStatusEntry: Encodable {
+    struct ActiveRequestEntry: Encodable {
+        let requestID: String
+        let ticketID: String?
+        let kind: String
+        let mode: String
+    }
+
     let projectID: String
     let isRunning: Bool
-    let activeRequestID: String?
-    let activeTicketID: String?
+    let activeRequests: [ActiveRequestEntry]
 }
 
 private struct WorkerStatusResponse: Encodable {
@@ -219,10 +231,22 @@ private struct SupervisorEvent: Codable {
     }
 }
 
-private struct SidecarCommand: Encodable {
+private struct SidecarSubmitCommand: Encodable {
+    let type = "submitTask"
     let threadId: String
     let requestId: String
+    let mode: String
     let prompt: String
+}
+
+private struct SidecarCancelCommand: Encodable {
+    let type = "cancelTask"
+    let requestId: String
+}
+
+private enum RequestSource {
+    case sidecar
+    case localCleanup
 }
 
 private struct ActiveRequest {
@@ -230,7 +254,9 @@ private struct ActiveRequest {
     let projectID: UUID
     let ticketID: UUID
     let kind: String
+    let mode: TaskMode
     let idempotencyKey: String?
+    let source: RequestSource
 }
 
 private enum StreamSource {
@@ -304,7 +330,7 @@ private final class WorkerSession {
 
     var stdoutBuffer: Data = .init()
     var stderrBuffer: Data = .init()
-    var activeRequestID: UUID?
+    var activeRequestIDs: Set<UUID> = []
 
     init(
         projectID: UUID,
@@ -631,9 +657,11 @@ private final class ControlServer: @unchecked Sendable {
         guard
             let projectIDRaw = request.projectID,
             let taskIDRaw,
-            let kind = request.kind
+            let kind = request.kind,
+            let modeRaw = request.mode,
+            let mode = TaskMode(rawValue: modeRaw)
         else {
-            throw SupervisorError.invalidRequest("submitTask requires projectID, taskID, and kind.")
+            throw SupervisorError.invalidRequest("submitTask requires projectID, taskID, kind, and mode.")
         }
 
         guard
@@ -658,15 +686,20 @@ private final class ControlServer: @unchecked Sendable {
                 projectID: projectID,
                 taskID: taskID,
                 kind: "codex.ticket",
+                mode: mode,
                 fd: fd
             )
 
         case "cleanup.requestRefactor", "cleanup.applyRefactor":
+            guard mode == .implement else {
+                throw SupervisorError.invalidRequest("\(kind) requires mode=implement.")
+            }
             try startCodexTicketTask(
                 request: request,
                 projectID: projectID,
                 taskID: taskID,
                 kind: kind,
+                mode: mode,
                 fd: fd
             )
 
@@ -674,11 +707,15 @@ private final class ControlServer: @unchecked Sendable {
              "cleanup.commitRefactor",
              "cleanup.verifyCleanWorktree",
              "cleanup.runUnitTests":
+            guard mode == .implement else {
+                throw SupervisorError.invalidRequest("\(kind) requires mode=implement.")
+            }
             try startLocalCleanupTask(
                 request: request,
                 projectID: projectID,
                 taskID: taskID,
                 kind: kind,
+                mode: mode,
                 fd: fd
             )
 
@@ -720,6 +757,7 @@ private final class ControlServer: @unchecked Sendable {
             projectID: projectID,
             taskID: taskID,
             kind: "codex.ticket",
+            mode: .plan,
             fd: fd
         )
     }
@@ -729,6 +767,7 @@ private final class ControlServer: @unchecked Sendable {
         projectID: UUID,
         taskID: UUID,
         kind: String,
+        mode: TaskMode,
         fd: Int32
     ) throws {
         guard
@@ -747,28 +786,18 @@ private final class ControlServer: @unchecked Sendable {
 
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
 
-        if let existing = firstInFlightRequest(projectID: projectID, excluding: taskID) {
+        if mode == .implement, let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID) {
             throw SupervisorError.invalidRequest(
-                "Project \(projectID.uuidString) already has in-flight request \(existing.requestID.uuidString)."
+                "Project \(projectID.uuidString) already has implementation in-flight request \(existing.requestID.uuidString)."
             )
         }
 
         let session = try ensureWorker(projectID: projectID, workingDirectory: resolvedWorkingDirectory)
 
-        if let existingRequestID = session.activeRequestID, existingRequestID != taskID {
-            if activeRequests[existingRequestID] == nil {
-                // Recover from stale local state if prior request mapping was already dropped.
-                session.activeRequestID = nil
-            } else {
-                throw SupervisorError.invalidRequest(
-                    "Project \(projectID.uuidString) already has in-flight request \(existingRequestID.uuidString)."
-                )
-            }
-        }
-
-        let payload = SidecarCommand(
+        let payload = SidecarSubmitCommand(
             threadId: ticketID.uuidString,
             requestId: taskID.uuidString,
+            mode: mode.rawValue,
             prompt: prompt
         )
         var data = try JSONEncoder().encode(payload)
@@ -780,13 +809,15 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.sendFailed(error.localizedDescription)
         }
 
-        session.activeRequestID = taskID
+        session.activeRequestIDs.insert(taskID)
         activeRequests[taskID] = ActiveRequest(
             requestID: taskID,
             projectID: projectID,
             ticketID: ticketID,
             kind: kind,
-            idempotencyKey: request.idempotencyKey
+            mode: mode,
+            idempotencyKey: request.idempotencyKey,
+            source: .sidecar
         )
         recordTaskAccepted(
             projectID: projectID,
@@ -809,6 +840,7 @@ private final class ControlServer: @unchecked Sendable {
         projectID: UUID,
         taskID: UUID,
         kind: String,
+        mode: TaskMode,
         fd: Int32
     ) throws {
         guard
@@ -819,9 +851,9 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.invalidRequest("\(kind) requires ticketID and workingDirectory.")
         }
 
-        if let existing = firstInFlightRequest(projectID: projectID, excluding: taskID) {
+        if mode == .implement, let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID) {
             throw SupervisorError.invalidRequest(
-                "Project \(projectID.uuidString) already has in-flight request \(existing.requestID.uuidString)."
+                "Project \(projectID.uuidString) already has implementation in-flight request \(existing.requestID.uuidString)."
             )
         }
 
@@ -831,7 +863,9 @@ private final class ControlServer: @unchecked Sendable {
             projectID: projectID,
             ticketID: ticketID,
             kind: kind,
-            idempotencyKey: request.idempotencyKey
+            mode: mode,
+            idempotencyKey: request.idempotencyKey,
+            source: .localCleanup
         )
 
         activeRequests[taskID] = activeRequest
@@ -1114,27 +1148,33 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private func handleWorkerStatus(request: ControlRequest, fd: Int32) throws {
+        func activeEntries(for session: WorkerSession) -> [WorkerStatusEntry.ActiveRequestEntry] {
+            session.activeRequestIDs
+                .compactMap { requestID in
+                    guard let activeRequest = activeRequests[requestID] else { return nil }
+                    return WorkerStatusEntry.ActiveRequestEntry(
+                        requestID: activeRequest.requestID.uuidString,
+                        ticketID: activeRequest.ticketID.uuidString,
+                        kind: activeRequest.kind,
+                        mode: activeRequest.mode.rawValue
+                    )
+                }
+                .sorted { lhs, rhs in
+                    lhs.requestID < rhs.requestID
+                }
+        }
+
         var result: [WorkerStatusEntry] = []
         if let projectIDRaw = request.projectID {
             guard let projectID = UUID(uuidString: projectIDRaw) else {
                 throw SupervisorError.invalidRequest("workerStatus projectID must be a UUID.")
             }
             if let session = workers[projectID] {
-                let activeTicketID: String?
-                if
-                    let activeRequestID = session.activeRequestID,
-                    let activeRequest = activeRequests[activeRequestID]
-                {
-                    activeTicketID = activeRequest.ticketID.uuidString
-                } else {
-                    activeTicketID = nil
-                }
                 result.append(
                     WorkerStatusEntry(
                         projectID: projectID.uuidString,
                         isRunning: session.process.isRunning,
-                        activeRequestID: session.activeRequestID?.uuidString,
-                        activeTicketID: activeTicketID
+                        activeRequests: activeEntries(for: session)
                     )
                 )
             } else {
@@ -1142,27 +1182,16 @@ private final class ControlServer: @unchecked Sendable {
                     WorkerStatusEntry(
                         projectID: projectID.uuidString,
                         isRunning: false,
-                        activeRequestID: nil,
-                        activeTicketID: nil
+                        activeRequests: []
                     )
                 )
             }
         } else {
             result = workers.map { projectID, session in
-                let activeTicketID: String?
-                if
-                    let activeRequestID = session.activeRequestID,
-                    let activeRequest = activeRequests[activeRequestID]
-                {
-                    activeTicketID = activeRequest.ticketID.uuidString
-                } else {
-                    activeTicketID = nil
-                }
-                return WorkerStatusEntry(
+                WorkerStatusEntry(
                     projectID: projectID.uuidString,
                     isRunning: session.process.isRunning,
-                    activeRequestID: session.activeRequestID?.uuidString,
-                    activeTicketID: activeTicketID
+                    activeRequests: activeEntries(for: session)
                 )
             }
         }
@@ -1251,16 +1280,16 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.invalidRequest("cancelTask requires projectID and taskID UUIDs.")
         }
 
-        if let session = workers[projectID], session.activeRequestID == taskID {
-            stopWorker(projectID: projectID, emitWorkerExit: true)
-            recordTaskFailure(projectID: projectID, taskID: taskID, summary: "cancelled.force_terminated")
+        guard let activeRequest = activeRequests[taskID], activeRequest.projectID == projectID else {
+            _ = sendJSON(AckResponse(type: "cancelTask.ok", message: nil), to: fd)
+            return
         }
 
-        if let process = runningTaskProcesses[taskID], process.isRunning {
-            process.terminate()
-        }
-
-        if let activeRequest = activeRequests[taskID] {
+        switch activeRequest.source {
+        case .localCleanup:
+            if let process = runningTaskProcesses[taskID], process.isRunning {
+                process.terminate()
+            }
             recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.force_terminated")
             emitTaskFailed(
                 projectID: activeRequest.projectID,
@@ -1269,6 +1298,36 @@ private final class ControlServer: @unchecked Sendable {
                 message: "cancelled.force_terminated"
             )
             clearRequest(activeRequest)
+
+        case .sidecar:
+            guard let session = workers[projectID], session.process.isRunning else {
+                recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.worker_not_running")
+                emitTaskFailed(
+                    projectID: activeRequest.projectID,
+                    ticketID: activeRequest.ticketID,
+                    requestID: activeRequest.requestID,
+                    message: "cancelled.worker_not_running"
+                )
+                clearRequest(activeRequest)
+                _ = sendJSON(AckResponse(type: "cancelTask.ok", message: nil), to: fd)
+                return
+            }
+
+            let command = SidecarCancelCommand(requestId: taskID.uuidString)
+            var payload = try JSONEncoder().encode(command)
+            payload.append(0x0A)
+            do {
+                try session.stdin.write(contentsOf: payload)
+            } catch {
+                recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.send_failed")
+                emitTaskFailed(
+                    projectID: activeRequest.projectID,
+                    ticketID: activeRequest.ticketID,
+                    requestID: activeRequest.requestID,
+                    message: "cancelled.send_failed"
+                )
+                clearRequest(activeRequest)
+            }
         }
 
         _ = sendJSON(AckResponse(type: "cancelTask.ok", message: nil), to: fd)
@@ -1411,22 +1470,15 @@ private final class ControlServer: @unchecked Sendable {
             return
         }
 
-        if let type = object["type"] as? String {
-            handleSidecarTypedEvent(type: type, payload: object, projectID: projectID, rawLine: line)
+        guard let type = object["type"] as? String else {
+            emitFallbackOutput(line: line, projectID: projectID)
             return
         }
-
-        // Backward compatibility for legacy sidecar responses: {"ok":true|false,...}
-        if object["ok"] as? Bool != nil {
-            handleLegacySidecarResponse(payload: object, projectID: projectID, rawLine: line)
-            return
-        }
-
-        emitFallbackOutput(line: line, projectID: projectID)
+        handleSidecarTypedEvent(type: type, payload: object, projectID: projectID, rawLine: line)
     }
 
     private func handleSidecarTypedEvent(type: String, payload: [String: Any], projectID: UUID, rawLine: String) {
-        let requestID = parseUUID(payload["requestId"] as? String) ?? parseUUID(payload["requestID"] as? String)
+        let requestID = parseUUID(payload["requestId"] as? String)
         let activeRequest = resolveActiveRequest(projectID: projectID, requestID: requestID)
 
         switch type {
@@ -1443,7 +1495,7 @@ private final class ControlServer: @unchecked Sendable {
                     message: nil,
                     success: nil,
                     summary: nil,
-                    threadID: payload["threadId"] as? String ?? payload["threadID"] as? String
+                    threadID: payload["threadId"] as? String
                 )
             )
 
@@ -1461,7 +1513,7 @@ private final class ControlServer: @unchecked Sendable {
                     message: nil,
                     success: nil,
                     summary: nil,
-                    threadID: payload["threadId"] as? String ?? payload["threadID"] as? String
+                    threadID: payload["threadId"] as? String
                 )
             )
             broadcast(
@@ -1475,7 +1527,7 @@ private final class ControlServer: @unchecked Sendable {
                     message: nil,
                     success: nil,
                     summary: nil,
-                    threadID: payload["threadId"] as? String ?? payload["threadID"] as? String
+                    threadID: payload["threadId"] as? String
                 )
             )
 
@@ -1493,7 +1545,7 @@ private final class ControlServer: @unchecked Sendable {
                     message: message,
                     success: nil,
                     summary: nil,
-                    threadID: payload["threadId"] as? String ?? payload["threadID"] as? String
+                    threadID: payload["threadId"] as? String
                 )
             )
 
@@ -1535,7 +1587,7 @@ private final class ControlServer: @unchecked Sendable {
                     message: nil,
                     success: success,
                     summary: summary,
-                    threadID: payload["threadId"] as? String ?? payload["threadID"] as? String
+                    threadID: payload["threadId"] as? String
                 )
             )
             clearRequest(activeRequest)
@@ -1667,40 +1719,8 @@ private final class ControlServer: @unchecked Sendable {
         }
     }
 
-    private func handleLegacySidecarResponse(payload: [String: Any], projectID: UUID, rawLine: String) {
-        guard let activeRequest = resolveActiveRequest(projectID: projectID, requestID: nil) else {
-            return
-        }
-
-        let success = payload["ok"] as? Bool ?? false
-        if success == false {
-            let message = payload["error"] as? String ?? "Codex sidecar reported failure."
-            recordTaskFailure(projectID: activeRequest.projectID, taskID: activeRequest.requestID, summary: message)
-            broadcast(
-                SupervisorEvent(
-                    type: "ticket.error",
-                    projectID: activeRequest.projectID.uuidString,
-                    ticketID: activeRequest.ticketID.uuidString,
-                    requestID: activeRequest.requestID.uuidString,
-                    pid: nil,
-                    text: nil,
-                    message: message,
-                    success: nil,
-                    summary: nil,
-                    threadID: nil
-                )
-            )
-            emitTaskFailed(
-                projectID: activeRequest.projectID,
-                ticketID: activeRequest.ticketID,
-                requestID: activeRequest.requestID,
-                message: message
-            )
-        } else if
-            let result = payload["result"] as? [String: Any],
-            let finalResponse = result["finalResponse"] as? String,
-            finalResponse.isEmpty == false
-        {
+    private func emitFallbackOutput(line: String, projectID: UUID) {
+        for activeRequest in activeSidecarRequestsForProject(projectID) {
             broadcast(
                 SupervisorEvent(
                     type: "ticket.output",
@@ -1708,7 +1728,7 @@ private final class ControlServer: @unchecked Sendable {
                     ticketID: activeRequest.ticketID.uuidString,
                     requestID: activeRequest.requestID.uuidString,
                     pid: nil,
-                    text: finalResponse,
+                    text: line,
                     message: nil,
                     success: nil,
                     summary: nil,
@@ -1722,123 +1742,66 @@ private final class ControlServer: @unchecked Sendable {
                     ticketID: activeRequest.ticketID.uuidString,
                     requestID: activeRequest.requestID.uuidString,
                     pid: nil,
-                    text: finalResponse,
+                    text: line,
                     message: nil,
                     success: nil,
                     summary: nil,
                     threadID: nil
                 )
             )
-        } else {
-            emitFallbackOutput(line: rawLine, projectID: projectID)
         }
-
-        if success {
-            recordTaskCompletion(projectID: activeRequest.projectID, taskID: activeRequest.requestID, success: true, summary: nil)
-            emitTaskCompleted(
-                projectID: activeRequest.projectID,
-                ticketID: activeRequest.ticketID,
-                requestID: activeRequest.requestID,
-                summary: nil
-            )
-        }
-
-        broadcast(
-            SupervisorEvent(
-                type: "ticket.completed",
-                projectID: activeRequest.projectID.uuidString,
-                ticketID: activeRequest.ticketID.uuidString,
-                requestID: activeRequest.requestID.uuidString,
-                pid: nil,
-                text: nil,
-                message: nil,
-                success: success,
-                summary: payload["error"] as? String,
-                threadID: nil
-            )
-        )
-        clearRequest(activeRequest)
-    }
-
-    private func emitFallbackOutput(line: String, projectID: UUID) {
-        guard let activeRequest = resolveActiveRequest(projectID: projectID, requestID: nil) else {
-            return
-        }
-
-        broadcast(
-            SupervisorEvent(
-                type: "ticket.output",
-                projectID: activeRequest.projectID.uuidString,
-                ticketID: activeRequest.ticketID.uuidString,
-                requestID: activeRequest.requestID.uuidString,
-                pid: nil,
-                text: line,
-                message: nil,
-                success: nil,
-                summary: nil,
-                threadID: nil
-            )
-        )
-        broadcast(
-            SupervisorEvent(
-                type: "task.output",
-                projectID: activeRequest.projectID.uuidString,
-                ticketID: activeRequest.ticketID.uuidString,
-                requestID: activeRequest.requestID.uuidString,
-                pid: nil,
-                text: line,
-                message: nil,
-                success: nil,
-                summary: nil,
-                threadID: nil
-            )
-        )
     }
 
     private func handleWorkerStderrLine(_ line: String, projectID: UUID) {
         guard line.isEmpty == false else { return }
-        guard let activeRequest = resolveActiveRequest(projectID: projectID, requestID: nil) else { return }
-
-        broadcast(
-            SupervisorEvent(
-                type: "ticket.error",
-                projectID: activeRequest.projectID.uuidString,
-                ticketID: activeRequest.ticketID.uuidString,
-                requestID: activeRequest.requestID.uuidString,
-                pid: nil,
-                text: nil,
-                message: line,
-                success: nil,
-                summary: nil,
-                threadID: nil
+        for activeRequest in activeSidecarRequestsForProject(projectID) {
+            broadcast(
+                SupervisorEvent(
+                    type: "ticket.error",
+                    projectID: activeRequest.projectID.uuidString,
+                    ticketID: activeRequest.ticketID.uuidString,
+                    requestID: activeRequest.requestID.uuidString,
+                    pid: nil,
+                    text: nil,
+                    message: line,
+                    success: nil,
+                    summary: nil,
+                    threadID: nil
+                )
             )
-        )
+        }
     }
 
     private func resolveActiveRequest(projectID: UUID, requestID: UUID?) -> ActiveRequest? {
-        if let requestID, let request = activeRequests[requestID] {
+        if
+            let requestID,
+            let request = activeRequests[requestID],
+            request.projectID == projectID,
+            request.source == .sidecar
+        {
             return request
         }
-
-        if let session = workers[projectID], let activeRequestID = session.activeRequestID {
-            return activeRequests[activeRequestID]
-        }
-
         return nil
+    }
+
+    private func activeSidecarRequestsForProject(_ projectID: UUID) -> [ActiveRequest] {
+        activeRequests.values
+            .filter { $0.projectID == projectID && $0.source == .sidecar }
+            .sorted { lhs, rhs in
+                lhs.requestID.uuidString < rhs.requestID.uuidString
+            }
     }
 
     private func clearRequest(_ request: ActiveRequest) {
         activeRequests.removeValue(forKey: request.requestID)
         runningTaskProcesses.removeValue(forKey: request.requestID)
-        if let session = workers[request.projectID], session.activeRequestID == request.requestID {
-            session.activeRequestID = nil
+        if let session = workers[request.projectID] {
+            session.activeRequestIDs.remove(request.requestID)
         }
     }
 
     private func handleWorkerTermination(projectID: UUID, statusCode: Int32) {
         guard let session = workers.removeValue(forKey: projectID) else { return }
-
-        let activeRequestID = session.activeRequestID
 
         session.stdout.readabilityHandler = nil
         session.stderr.readabilityHandler = nil
@@ -1846,7 +1809,8 @@ private final class ControlServer: @unchecked Sendable {
         session.stdout.closeFile()
         session.stderr.closeFile()
 
-        if let activeRequestID, let request = activeRequests[activeRequestID] {
+        for requestID in session.activeRequestIDs {
+            guard let request = activeRequests[requestID] else { continue }
             let message = "Sidecar exited with status \(statusCode)."
             recordTaskFailure(projectID: request.projectID, taskID: request.requestID, summary: message)
             broadcast(
@@ -1916,7 +1880,8 @@ private final class ControlServer: @unchecked Sendable {
         session.stdout.closeFile()
         session.stderr.closeFile()
 
-        if let activeRequestID = session.activeRequestID, let request = activeRequests[activeRequestID] {
+        for requestID in session.activeRequestIDs {
+            guard let request = activeRequests[requestID] else { continue }
             let message = "Worker stopped before completion."
             recordTaskFailure(projectID: request.projectID, taskID: request.requestID, summary: message)
             broadcast(
@@ -2356,9 +2321,11 @@ private final class ControlServer: @unchecked Sendable {
         return UUID(uuidString: rawValue)
     }
 
-    private func firstInFlightRequest(projectID: UUID, excluding taskID: UUID) -> ActiveRequest? {
+    private func firstImplementationInFlight(projectID: UUID, excluding taskID: UUID) -> ActiveRequest? {
         activeRequests.values.first { request in
-            request.projectID == projectID && request.requestID != taskID
+            request.projectID == projectID &&
+                request.requestID != taskID &&
+                request.mode == .implement
         }
     }
 
