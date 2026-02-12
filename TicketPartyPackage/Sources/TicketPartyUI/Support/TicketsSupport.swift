@@ -122,13 +122,15 @@ struct TicketDraft: Equatable {
     var title: String = ""
     var description: String = ""
     var size: TicketSize = .straightforwardFeature
+    var addToTopOfBacklog = false
 
     var normalized: TicketDraft {
         TicketDraft(
             projectID: projectID,
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            size: size
+            size: size,
+            addToTopOfBacklog: addToTopOfBacklog
         )
     }
 
@@ -141,12 +143,14 @@ struct TicketDraft: Equatable {
         projectID: UUID? = nil,
         title: String = "",
         description: String = "",
-        size: TicketSize = .straightforwardFeature
+        size: TicketSize = .straightforwardFeature,
+        addToTopOfBacklog: Bool = false
     ) {
         self.projectID = projectID
         self.title = title
         self.description = description
         self.size = size
+        self.addToTopOfBacklog = addToTopOfBacklog
     }
 
     init(ticket: Ticket) {
@@ -154,6 +158,7 @@ struct TicketDraft: Equatable {
         title = ticket.title
         description = ticket.ticketDescription
         size = ticket.size
+        addToTopOfBacklog = false
     }
 }
 
@@ -175,6 +180,7 @@ extension TicketSize {
 public extension Notification.Name {
     static let ticketPartyNewTicketRequested = Notification.Name("TicketParty.newTicketRequested")
     static let ticketPartyEditSelectedTicketRequested = Notification.Name("TicketParty.editSelectedTicketRequested")
+    static let ticketPartyMoveSelectedTicketToTopRequested = Notification.Name("TicketParty.moveSelectedTicketToTopRequested")
     static let ticketPartyMoveSelectedTicketUpRequested = Notification.Name("TicketParty.moveSelectedTicketUpRequested")
     static let ticketPartyMoveSelectedTicketDownRequested = Notification.Name("TicketParty.moveSelectedTicketDownRequested")
 }
