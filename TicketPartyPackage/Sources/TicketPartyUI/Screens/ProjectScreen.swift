@@ -681,17 +681,20 @@ private struct ProjectTicketDetailPanel: View {
     let ticket: Ticket?
     @State private var messageDraft = ""
     @State private var isRawTranscriptExpanded = false
+    @State private var pendingConversationBottomScrollTicketID: UUID?
 
     var body: some View {
         Group {
             if let ticket {
                 ticketDetailLayout(ticket: ticket)
                     .task(id: ticket.id) {
+                        pendingConversationBottomScrollTicketID = ticket.id
                         codexViewModel.loadConversation(ticketID: ticket.id)
                     }
                     .onChange(of: ticket.id) { _, _ in
                         messageDraft = ""
                         isRawTranscriptExpanded = false
+                        pendingConversationBottomScrollTicketID = ticket.id
                     }
             } else {
                 ContentUnavailableView("Select a Ticket", systemImage: "doc.text")
@@ -710,6 +713,8 @@ private struct ProjectTicketDetailPanel: View {
             }
         )
         let messages = codexViewModel.conversationMessages(for: ticket.id)
+        let latestMessageID = messages.last?.id
+        let isConversationLoading = codexViewModel.ticketConversationLoading[ticket.id] == true
         let error = codexViewModel.ticketErrors[ticket.id]
 
         VStack(alignment: .leading, spacing: 12) {
@@ -755,24 +760,50 @@ private struct ProjectTicketDetailPanel: View {
                         .disabled(isSending)
                     }
 
-                    if codexViewModel.ticketConversationLoading[ticket.id] == true {
+                    if isConversationLoading {
                         ProgressView("Loading conversation...")
                             .controlSize(.small)
                     }
 
-                    ScrollView {
-                        if messages.isEmpty {
-                            Text("No conversation yet.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(messages) { message in
-                                    TicketConversationMessageRow(message: message)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            if messages.isEmpty {
+                                Text("No conversation yet.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                LazyVStack(alignment: .leading, spacing: 8) {
+                                    ForEach(messages) { message in
+                                        TicketConversationMessageRow(message: message)
+                                    }
                                 }
+                                .frame(maxWidth: .infinity)
                             }
-                            .frame(maxWidth: .infinity)
+                            Color.clear
+                                .frame(height: 1)
+                                .id(conversationBottomAnchorID(for: ticket.id))
+                        }
+                        .onAppear {
+                            scrollConversationToBottomIfNeeded(
+                                proxy: proxy,
+                                ticketID: ticket.id,
+                                isConversationLoading: isConversationLoading
+                            )
+                        }
+                        .onChange(of: latestMessageID) { _, _ in
+                            scrollConversationToBottomIfNeeded(
+                                proxy: proxy,
+                                ticketID: ticket.id,
+                                isConversationLoading: isConversationLoading
+                            )
+                        }
+                        .onChange(of: isConversationLoading) { _, _ in
+                            scrollConversationToBottomIfNeeded(
+                                proxy: proxy,
+                                ticketID: ticket.id,
+                                isConversationLoading: isConversationLoading
+                            )
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -854,6 +885,25 @@ private struct ProjectTicketDetailPanel: View {
                 persist(ticket: ticket)
             }
         )
+    }
+
+    private func conversationBottomAnchorID(for ticketID: UUID) -> String {
+        "conversation-bottom-\(ticketID.uuidString)"
+    }
+
+    private func scrollConversationToBottomIfNeeded(
+        proxy: ScrollViewProxy,
+        ticketID: UUID,
+        isConversationLoading: Bool
+    ) {
+        guard pendingConversationBottomScrollTicketID == ticketID else { return }
+        guard isConversationLoading == false else { return }
+        Task { @MainActor in
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(conversationBottomAnchorID(for: ticketID), anchor: .bottom)
+            }
+            pendingConversationBottomScrollTicketID = nil
+        }
     }
 
     private func persist(ticket: Ticket) {
