@@ -387,6 +387,45 @@ struct TicketPartyTests {
 
     @Test
     @MainActor
+    func codexViewModel_statusAttentionIndicator_prioritizesErrorOverNeedsResponse() throws {
+        _ = try TestEnvironment()
+        let conversationStore = TicketConversationStore()
+        let ticketID = UUID()
+        _ = try conversationStore.beginAssistantMessage(ticketID: ticketID, runID: nil)
+        try conversationStore.appendAssistantOutput(ticketID: ticketID, line: "Can you confirm?")
+        try conversationStore.completeAssistantMessage(ticketID: ticketID, success: true, errorSummary: nil)
+
+        let viewModel = CodexViewModel(
+            conversationStore: conversationStore,
+            startBackgroundTasks: false
+        )
+        viewModel.loadConversation(ticketID: ticketID)
+        viewModel.ticketErrors[ticketID] = "Supervisor request failed"
+
+        #expect(viewModel.statusAttentionIndicator(for: ticketID) == .error)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_statusAttentionIndicator_returnsNeedsResponseForLatestCompletedAssistantMessage() throws {
+        _ = try TestEnvironment()
+        let conversationStore = TicketConversationStore()
+        let ticketID = UUID()
+        _ = try conversationStore.beginAssistantMessage(ticketID: ticketID, runID: nil)
+        try conversationStore.appendAssistantOutput(ticketID: ticketID, line: "Need your input?")
+        try conversationStore.completeAssistantMessage(ticketID: ticketID, success: true, errorSummary: nil)
+
+        let viewModel = CodexViewModel(
+            conversationStore: conversationStore,
+            startBackgroundTasks: false
+        )
+        viewModel.loadConversation(ticketID: ticketID)
+
+        #expect(viewModel.statusAttentionIndicator(for: ticketID) == .needsResponse)
+    }
+
+    @Test
+    @MainActor
     func codexViewModel_startLoop_setsTicketInProgress_withConfiguredContext() async throws {
         _ = try TestEnvironment()
         let container = try TicketPartyPersistence.makeSharedContainer()

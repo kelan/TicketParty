@@ -1110,6 +1110,11 @@ struct CodexTicketOutputSnapshot {
     let isTruncated: Bool
 }
 
+enum TicketStatusAttentionIndicator: Equatable {
+    case error
+    case needsResponse
+}
+
 @MainActor
 @Observable
 final class CodexViewModel {
@@ -1217,6 +1222,25 @@ final class CodexViewModel {
 
     func conversationMessages(for ticketID: UUID) -> [TicketConversationMessageRecord] {
         ticketConversationMessages[ticketID, default: []]
+    }
+
+    func statusAttentionIndicator(for ticketID: UUID) -> TicketStatusAttentionIndicator? {
+        if let error = ticketErrors[ticketID]?.trimmingCharacters(in: .whitespacesAndNewlines), error.isEmpty == false {
+            return .error
+        }
+
+        guard
+            let latestAssistantMessage = ticketConversationMessages[ticketID]?
+                .last(where: { message in
+                    message.role == .assistant &&
+                        message.status != .pending &&
+                        message.status != .streaming
+                })
+        else {
+            return nil
+        }
+
+        return latestAssistantMessage.requiresResponse ? .needsResponse : nil
     }
 
     func setConversationMode(ticketID: UUID, mode: TicketConversationMode) {

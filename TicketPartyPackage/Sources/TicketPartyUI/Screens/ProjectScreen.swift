@@ -570,6 +570,11 @@ private struct ProjectWorkspaceView: View {
                     .accessibilityLabel("Running with agent")
             }
 
+            if let indicator = codexViewModel.statusAttentionIndicator(for: ticket.id) {
+                TicketStatusAttentionDot(indicator: indicator)
+                    .padding(.top, 6)
+            }
+
             TicketStatusBadge(status: ticket.quickStatus)
         }
         .padding(.vertical, 2)
@@ -700,7 +705,14 @@ private struct ProjectTicketDetailPanel: View {
 
             GroupBox("Status") {
                 VStack(alignment: .leading, spacing: 8) {
-                    LabeledContent("Current", value: ticket.quickStatus.title)
+                    LabeledContent("Current") {
+                        HStack(spacing: 6) {
+                            Text(ticket.quickStatus.title)
+                            if let indicator = codexViewModel.statusAttentionIndicator(for: ticket.id) {
+                                TicketStatusAttentionDot(indicator: indicator)
+                            }
+                        }
+                    }
 
                     TicketStatusQuickActions(currentStatus: ticket.quickStatus) { status in
                         guard status != ticket.quickStatus else { return }
@@ -1011,6 +1023,17 @@ private struct TicketStatusBadge: View {
     }
 }
 
+private struct TicketStatusAttentionDot: View {
+    let indicator: TicketStatusAttentionIndicator
+
+    var body: some View {
+        Circle()
+            .fill(indicator.color)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(indicator.accessibilityLabel)
+    }
+}
+
 private extension TicketQuickStatus {
 
     var isBacklogSortable: Bool {
@@ -1040,6 +1063,26 @@ private extension TicketQuickStatus {
             .brown
         case .duplicate:
             .mint
+        }
+    }
+}
+
+private extension TicketStatusAttentionIndicator {
+    var color: Color {
+        switch self {
+        case .error:
+            .red
+        case .needsResponse:
+            .orange
+        }
+    }
+
+    var accessibilityLabel: String {
+        switch self {
+        case .error:
+            "Ticket has an error"
+        case .needsResponse:
+            "Ticket needs response"
         }
     }
 }
