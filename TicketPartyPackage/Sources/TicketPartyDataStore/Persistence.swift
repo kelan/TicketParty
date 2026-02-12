@@ -15,6 +15,8 @@ public enum TicketPartyPersistence {
             Assignment.self,
             Agent.self,
             TicketTranscriptRun.self,
+            TicketConversationThread.self,
+            TicketConversationMessage.self,
             TicketEvent.self,
             SessionMarker.self,
         ])

@@ -677,6 +677,8 @@ private struct ProjectTicketDetailPanel: View {
     @Environment(CodexViewModel.self) private var codexViewModel
     let project: Project
     let ticket: Ticket?
+    @State private var messageDraft = ""
+    @State private var isRawTranscriptExpanded = false
 
     var body: some View {
         Group {
@@ -704,19 +706,73 @@ private struct ProjectTicketDetailPanel: View {
                         }
                     }
 
-                    Section("Codex") {
+                    Section("Codex Conversation") {
                         let isSending = codexViewModel.ticketIsSending[ticket.id] == true
+                        let modeBinding = Binding<TicketConversationMode>(
+                            get: { codexViewModel.conversationMode(for: ticket.id) },
+                            set: { newMode in
+                                codexViewModel.setConversationMode(ticketID: ticket.id, mode: newMode)
+                            }
+                        )
+                        let messages = codexViewModel.conversationMessages(for: ticket.id)
+
+                        Picker("Mode", selection: modeBinding) {
+                            Text("Plan").tag(TicketConversationMode.plan)
+                            Text("Implement").tag(TicketConversationMode.implement)
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(isSending)
+
+                        if modeBinding.wrappedValue == .plan {
+                            Button("Start Implementation") {
+                                Task {
+                                    await codexViewModel.startImplementation(ticket: ticket, project: project)
+                                }
+                            }
+                            .disabled(isSending)
+                        }
+
+                        if codexViewModel.ticketConversationLoading[ticket.id] == true {
+                            ProgressView("Loading conversation...")
+                                .controlSize(.small)
+                        }
+
+                        ScrollView {
+                            if messages.isEmpty {
+                                Text("No conversation yet.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            } else {
+                                LazyVStack(alignment: .leading, spacing: 8) {
+                                    ForEach(messages) { message in
+                                        TicketConversationMessageRow(message: message)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .frame(minHeight: 180, maxHeight: 320)
+
+                        TextEditor(text: $messageDraft)
+                            .font(.body)
+                            .frame(height: 68)
+                            .disabled(isSending)
+
                         HStack(spacing: 8) {
-                            Button("Send to Codex") {
+                            Button("Send") {
                                 if ticket.quickStatus != .inProgress {
                                     ticket.quickStatus = .inProgress
                                     persist(ticket: ticket)
                                 }
+                                let draft = messageDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard draft.isEmpty == false else { return }
+                                messageDraft = ""
                                 Task {
-                                    await codexViewModel.send(ticket: ticket, project: project)
+                                    await codexViewModel.sendMessage(ticket: ticket, project: project, text: draft)
                                 }
                             }
-                            .disabled(isSending)
+                            .disabled(isSending || messageDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
                             if isSending {
                                 Button("Stop") {
@@ -742,22 +798,31 @@ private struct ProjectTicketDetailPanel: View {
                                 .foregroundStyle(.red)
                         }
 
-                        ScrollView {
-                            let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
-                            Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                            if outputSnapshot.isTruncated {
-                                Text("Showing latest output segment.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                        DisclosureGroup("Raw Transcript", isExpanded: $isRawTranscriptExpanded) {
+                            ScrollView {
+                                let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
+                                Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                                if outputSnapshot.isTruncated {
+                                    Text("Showing latest output segment.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                }
                             }
+                            .frame(minHeight: 140)
                         }
-                        .frame(minHeight: 180)
                     }
+                }
+                .task(id: ticket.id) {
+                    codexViewModel.loadConversation(ticketID: ticket.id)
+                }
+                .onChange(of: ticket.id) { _, _ in
+                    messageDraft = ""
+                    isRawTranscriptExpanded = false
                 }
             } else {
                 ContentUnavailableView("Select a Ticket", systemImage: "doc.text")
@@ -782,6 +847,68 @@ private struct ProjectTicketDetailPanel: View {
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
+    }
+}
+
+private struct TicketConversationMessageRow: View {
+    let message: TicketConversationMessageRecord
+
+    private var isUser: Bool {
+        message.role == .user
+    }
+
+    private var bubbleColor: Color {
+        switch message.role {
+        case .user:
+            .blue.opacity(0.16)
+        case .assistant:
+            .green.opacity(0.14)
+        case .system:
+            .orange.opacity(0.16)
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            if isUser == false {
+                bubble
+                Spacer(minLength: 24)
+            } else {
+                Spacer(minLength: 24)
+                bubble
+            }
+        }
+    }
+
+    private var bubble: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(message.role.label)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Text(message.content.isEmpty ? "..." : message.content)
+                .font(.subheadline)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 8) {
+                Text(message.createdAt, format: .dateTime.hour().minute())
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if message.requiresResponse {
+                    Text("Needs response")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
+                }
+            }
+        }
+        .padding(10)
+        .background(bubbleColor, in: .rect(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .frame(maxWidth: 520, alignment: .leading)
     }
 }
 
@@ -863,6 +990,19 @@ private extension TicketQuickStatus {
             return .brown
         case .duplicate:
             return .mint
+        }
+    }
+}
+
+private extension TicketConversationRole {
+    var label: String {
+        switch self {
+        case .user:
+            return "You"
+        case .assistant:
+            return "Codex"
+        case .system:
+            return "System"
         }
     }
 }

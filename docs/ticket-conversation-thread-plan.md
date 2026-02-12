@@ -191,3 +191,11 @@ Add deterministic view-model tests (with stubbed manager stream) for:
 - Replay uses deterministic extractive summary (no extra model call).
 - Follow-up question detection is heuristic (`?` in assistant tail text) for UI signaling only.
 - Transcript logs remain the authoritative raw stream artifact; conversation messages are user-facing structured history.
+
+## Implementation Notes (February 12, 2026)
+
+- Added conversation thread/message enums, SwiftData models, and schema registration.
+- Added `TicketConversationStore` with mode persistence, replay bundle, deterministic compaction, and assistant streaming lifecycle APIs.
+- Updated `CodexViewModel` send flow to persist conversation turns, build prompt replay, stream assistant output into thread records, and support explicit `Start Implementation`.
+- Updated ticket detail UI to conversation-first layout with message timeline, composer, mode segmented control, `Start Implementation`, `Stop`, and `Raw Transcript` disclosure.
+- Added unit coverage for conversation thread persistence, sequence ordering, replay/compaction, assistant stream aggregation, and implementation handoff mode switching.

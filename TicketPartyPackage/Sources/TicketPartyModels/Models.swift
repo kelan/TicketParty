@@ -68,6 +68,25 @@ public enum TicketTranscriptStatus: String, Codable, CaseIterable, Sendable {
     case cancelled
 }
 
+public enum TicketConversationMode: String, Codable, CaseIterable, Sendable {
+    case plan
+    case implement
+}
+
+public enum TicketConversationRole: String, Codable, CaseIterable, Sendable {
+    case user
+    case assistant
+    case system
+}
+
+public enum TicketConversationMessageStatus: String, Codable, CaseIterable, Sendable {
+    case pending
+    case streaming
+    case completed
+    case failed
+    case cancelled
+}
+
 public struct TicketSummary: Codable, Hashable, Sendable {
     public let id: UUID
     public let displayID: String

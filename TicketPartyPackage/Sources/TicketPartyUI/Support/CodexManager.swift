@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import SwiftData
 import TicketPartyDataStore
+import TicketPartyModels
 
 enum CodexProjectStatus: Sendable, Equatable {
     case stopped
@@ -253,8 +254,7 @@ actor CodexManager {
         workingDirectory: String?,
         ticketID: UUID,
         idempotencyKey: String,
-        title: String,
-        description: String
+        prompt: String
     ) async throws {
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
         ensureProjectSubscription(projectID: projectID)
@@ -265,7 +265,7 @@ actor CodexManager {
             kind: "codex.ticket",
             idempotencyKey: idempotencyKey,
             workingDirectory: resolvedWorkingDirectory,
-            prompt: "\(title)\n\(description)",
+            prompt: prompt,
             payload: [:]
         )
 
@@ -284,6 +284,23 @@ actor CodexManager {
         requestToProject[submit.taskID] = projectID
         // submitTask.ok confirms supervisor accepted the request; treat project as active.
         setStatus(.running, for: projectID)
+    }
+
+    func sendTicket(
+        projectID: UUID,
+        workingDirectory: String?,
+        ticketID: UUID,
+        idempotencyKey: String,
+        title: String,
+        description: String
+    ) async throws {
+        try await sendTicket(
+            projectID: projectID,
+            workingDirectory: workingDirectory,
+            ticketID: ticketID,
+            idempotencyKey: idempotencyKey,
+            prompt: "\(title)\n\(description)"
+        )
     }
 
     private func submitTask(
@@ -1081,8 +1098,11 @@ final class CodexViewModel {
     private let loopManager: TicketLoopManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
     private let transcriptStore: TicketTranscriptStore
+    private let conversationStore: TicketConversationStore
     private var modelContext: ModelContext?
     private let minSpinnerDuration: Duration = .seconds(1)
+    private let replayWindowCount = TicketConversationStore.defaultWindowCount
+    private let replaySummaryLimit = TicketConversationStore.defaultMaxSummaryChars
     private var eventTask: Task<Void, Never>?
     private var loopEventTask: Task<Void, Never>?
     private var supervisorHealthTask: Task<Void, Never>?
@@ -1094,18 +1114,24 @@ final class CodexViewModel {
     var ticketErrors: [UUID: String] = [:]
     var ticketIsSending: [UUID: Bool] = [:]
     var activeRunByTicketID: [UUID: UUID] = [:]
+    var activeAssistantMessageByTicketID: [UUID: UUID] = [:]
+    var ticketConversationMessages: [UUID: [TicketConversationMessageRecord]] = [:]
+    var ticketConversationModes: [UUID: TicketConversationMode] = [:]
+    var ticketConversationLoading: [UUID: Bool] = [:]
     var supervisorHealth: CodexSupervisorHealthStatus = .notRunning
 
     init(
         manager: CodexManager = CodexManager(),
         supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker(),
         transcriptStore: TicketTranscriptStore = TicketTranscriptStore(),
+        conversationStore: TicketConversationStore = TicketConversationStore(),
         startBackgroundTasks: Bool = true
     ) {
         self.manager = manager
         loopManager = TicketLoopManager(executor: manager)
         self.supervisorHealthChecker = supervisorHealthChecker
         self.transcriptStore = transcriptStore
+        self.conversationStore = conversationStore
 
         if startBackgroundTasks {
             do {
@@ -1143,26 +1169,82 @@ final class CodexViewModel {
         }
     }
 
-    func send(ticket: Ticket, project: Project) async {
-        let projectID = project.id
-        let workingDirectory = project.workingDirectory
-        let ticketID = ticket.id
-        let title = ticket.title
-        let description = ticket.ticketDescription
-        let clock = ContinuousClock()
-        let start = clock.now
-        let runID: UUID
-
-        guard ticketIsSending[ticketID] != true else {
-            return
-        }
+    func loadConversation(ticketID: UUID) {
+        ticketConversationLoading[ticketID] = true
+        defer { ticketConversationLoading[ticketID] = false }
 
         do {
+            _ = try conversationStore.ensureThread(ticketID: ticketID)
+            ticketConversationModes[ticketID] = try conversationStore.mode(ticketID: ticketID)
+            ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+        } catch {
+            ticketErrors[ticketID] = "Failed to load conversation: \(error.localizedDescription)"
+        }
+    }
+
+    func conversationMode(for ticketID: UUID) -> TicketConversationMode {
+        ticketConversationModes[ticketID] ?? .plan
+    }
+
+    func conversationMessages(for ticketID: UUID) -> [TicketConversationMessageRecord] {
+        ticketConversationMessages[ticketID, default: []]
+    }
+
+    func setConversationMode(ticketID: UUID, mode: TicketConversationMode) {
+        do {
+            try conversationStore.setMode(ticketID: ticketID, mode: mode)
+            ticketConversationModes[ticketID] = mode
+        } catch {
+            ticketErrors[ticketID] = "Failed to set mode: \(error.localizedDescription)"
+        }
+    }
+
+    func send(ticket: Ticket, project: Project) async {
+        let summary = """
+        Please continue this ticket conversation.
+        Ticket: \(ticket.title)
+        Description: \(ticket.ticketDescription.isEmpty ? "(none)" : ticket.ticketDescription)
+        """
+        await sendMessage(ticket: ticket, project: project, text: summary)
+    }
+
+    func sendMessage(ticket: Ticket, project: Project, text: String) async {
+        let projectID = project.id
+        let ticketID = ticket.id
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return }
+        guard ticketIsSending[ticketID] != true else { return }
+
+        let clock = ContinuousClock()
+        let start = clock.now
+
+        let runID: UUID
+        let prompt: String
+
+        do {
+            _ = try conversationStore.ensureThread(ticketID: ticketID)
+            _ = try conversationStore.appendUserMessage(ticketID: ticketID, text: trimmed)
             runID = try transcriptStore.startRun(projectID: projectID, ticketID: ticketID, requestID: nil)
             activeRunByTicketID[ticketID] = runID
             ticketOutput[ticketID] = ""
+
+            let assistant = try conversationStore.beginAssistantMessage(ticketID: ticketID, runID: runID)
+            activeAssistantMessageByTicketID[ticketID] = assistant.id
+            let replay = try conversationStore.replayBundle(
+                ticketID: ticketID,
+                windowCount: replayWindowCount,
+                maxSummaryChars: replaySummaryLimit
+            )
+            ticketConversationModes[ticketID] = replay.mode
+            ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+            prompt = conversationPrompt(
+                ticket: ticket,
+                mode: replay.mode,
+                summary: replay.summary,
+                messages: replay.messages
+            )
         } catch {
-            ticketErrors[ticketID] = "Failed to start transcript run: \(error.localizedDescription)"
+            ticketErrors[ticketID] = "Failed to prepare message: \(error.localizedDescription)"
             return
         }
 
@@ -1175,11 +1257,10 @@ final class CodexViewModel {
             let idempotencyKey = CodexManager.ticketTaskIdempotencyKey(ticketID: ticketID, runID: runID)
             try await manager.sendTicket(
                 projectID: projectID,
-                workingDirectory: workingDirectory,
+                workingDirectory: project.workingDirectory,
                 ticketID: ticketID,
                 idempotencyKey: idempotencyKey,
-                title: title,
-                description: description
+                prompt: prompt
             )
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
@@ -1188,13 +1269,52 @@ final class CodexViewModel {
             } catch {
                 NSLog("Failed to finalize transcript for send error: %@", error.localizedDescription)
             }
+            do {
+                try conversationStore.completeAssistantMessage(
+                    ticketID: ticketID,
+                    success: false,
+                    errorSummary: error.localizedDescription
+                )
+                ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+            } catch {
+                NSLog("Failed to finalize assistant message after send error: %@", error.localizedDescription)
+            }
             activeRunByTicketID.removeValue(forKey: ticketID)
+            activeAssistantMessageByTicketID.removeValue(forKey: ticketID)
 
             let elapsed = start.duration(to: clock.now)
             if elapsed < minSpinnerDuration {
                 try? await Task.sleep(for: minSpinnerDuration - elapsed)
             }
             setTicketSending(false, for: ticketID)
+        }
+    }
+
+    func startImplementation(ticket: Ticket, project: Project) async {
+        let ticketID = ticket.id
+
+        do {
+            _ = try conversationStore.ensureThread(ticketID: ticketID)
+            let existingMode = try conversationStore.mode(ticketID: ticketID)
+            guard existingMode == .plan else { return }
+
+            try conversationStore.setMode(ticketID: ticketID, mode: .implement)
+            _ = try conversationStore.appendSystemMessage(
+                ticketID: ticketID,
+                text: "Mode switched to implement."
+            )
+            let replay = try conversationStore.replayBundle(
+                ticketID: ticketID,
+                windowCount: replayWindowCount,
+                maxSummaryChars: replaySummaryLimit
+            )
+            ticketConversationModes[ticketID] = .implement
+            ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+
+            let handoff = synthesizedImplementationHandoff(summary: replay.summary, messages: replay.messages)
+            await sendMessage(ticket: ticket, project: project, text: handoff)
+        } catch {
+            ticketErrors[ticketID] = "Failed to start implementation: \(error.localizedDescription)"
         }
     }
 
@@ -1206,6 +1326,19 @@ final class CodexViewModel {
             if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
                 try? transcriptStore.completeRun(runID: runID, success: false, summary: "Cancelled by user.")
             }
+            if activeAssistantMessageByTicketID[ticketID] != nil {
+                do {
+                    try conversationStore.completeAssistantMessage(
+                        ticketID: ticketID,
+                        success: false,
+                        errorSummary: "Cancelled by user."
+                    )
+                    ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+                } catch {
+                    NSLog("Failed to mark assistant message as cancelled: %@", error.localizedDescription)
+                }
+            }
+            activeAssistantMessageByTicketID.removeValue(forKey: ticketID)
             setTicketSending(false, for: ticketID)
         } catch {
             ticketErrors[ticketID] = error.localizedDescription
@@ -1315,6 +1448,15 @@ final class CodexViewModel {
                 }
             }
 
+            if activeAssistantMessageByTicketID[ticketID] != nil {
+                do {
+                    try conversationStore.appendAssistantOutput(ticketID: ticketID, line: line)
+                    ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+                } catch {
+                    NSLog("Failed to append assistant streaming output: %@", error.localizedDescription)
+                }
+            }
+
             if let completion = agentTicketCompletion(from: line) {
                 applyTicketCompletion(ticketID: ticketID, success: completion.success, summary: completion.summary)
             }
@@ -1326,6 +1468,15 @@ final class CodexViewModel {
                     try transcriptStore.appendError(runID: runID, message: message)
                 } catch {
                     NSLog("Failed to append transcript error: %@", error.localizedDescription)
+                }
+            }
+
+            if activeAssistantMessageByTicketID[ticketID] != nil {
+                do {
+                    try conversationStore.appendAssistantOutput(ticketID: ticketID, line: "[ERROR] \(message)")
+                    ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+                } catch {
+                    NSLog("Failed to append assistant streaming error: %@", error.localizedDescription)
                 }
             }
 
@@ -1374,6 +1525,16 @@ final class CodexViewModel {
                 NSLog("Failed to complete transcript run: %@", error.localizedDescription)
             }
         }
+
+        if activeAssistantMessageByTicketID[ticketID] != nil {
+            do {
+                try conversationStore.completeAssistantMessage(ticketID: ticketID, success: success, errorSummary: summary)
+                ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+            } catch {
+                NSLog("Failed to complete assistant message: %@", error.localizedDescription)
+            }
+        }
+        activeAssistantMessageByTicketID.removeValue(forKey: ticketID)
 
         if success {
             ticketErrors[ticketID] = nil
@@ -1466,6 +1627,73 @@ final class CodexViewModel {
         }
 
         return nil
+    }
+
+    private func conversationPrompt(
+        ticket: Ticket,
+        mode: TicketConversationMode,
+        summary: String,
+        messages: [TicketConversationMessageRecord]
+    ) -> String {
+        let modeInstruction: String
+        switch mode {
+        case .plan:
+            modeInstruction = """
+            You are in PLAN mode.
+            Focus on planning, design, and questions only.
+            Do not perform implementation actions.
+            """
+        case .implement:
+            modeInstruction = """
+            You are in IMPLEMENT mode.
+            Execute implementation actions and provide concrete progress.
+            """
+        }
+
+        let summaryBlock = summary.isEmpty ? "(none)" : summary
+        let messageLines = messages
+            .map { message in
+                let flattened = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                let content = flattened.isEmpty ? "(empty)" : flattened
+                return "\(message.role.rawValue): \(content)"
+            }
+            .joined(separator: "\n")
+
+        return """
+        \(modeInstruction)
+
+        Ticket ID: \(ticket.displayID)
+        Ticket Title: \(ticket.title)
+        Ticket Description: \(ticket.ticketDescription.isEmpty ? "(none)" : ticket.ticketDescription)
+
+        Rolling Summary:
+        \(summaryBlock)
+
+        Recent Conversation:
+        \(messageLines.isEmpty ? "(none)" : messageLines)
+        """
+    }
+
+    private func synthesizedImplementationHandoff(
+        summary: String,
+        messages: [TicketConversationMessageRecord]
+    ) -> String {
+        let summaryBlock = summary.isEmpty ? "(none)" : summary
+        let recentContext = messages.suffix(6).map { message in
+            let content = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "\(message.role.rawValue): \(content.isEmpty ? "(empty)" : content)"
+        }.joined(separator: "\n")
+
+        return """
+        Start implementation now using the agreed plan.
+        Preserve prior decisions and constraints.
+
+        Rolling Summary:
+        \(summaryBlock)
+
+        Latest Context:
+        \(recentContext.isEmpty ? "(none)" : recentContext)
+        """
     }
 
     private func setTicketSending(_ isSending: Bool, for ticketID: UUID) {

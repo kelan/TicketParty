@@ -331,6 +331,91 @@ public final class TicketTranscriptRun {
 }
 
 @Model
+final class TicketConversationThread {
+    @Attribute(.unique) var id: UUID
+    @Attribute(.unique) var ticketID: UUID
+    var modeRaw: String
+    var rollingSummary: String
+    var lastCompactedSequence: Int64
+    var createdAt: Date
+    var updatedAt: Date
+
+    var mode: TicketConversationMode {
+        get { TicketConversationMode(rawValue: modeRaw) ?? .plan }
+        set { modeRaw = newValue.rawValue }
+    }
+
+    init(
+        id: UUID = UUID(),
+        ticketID: UUID,
+        mode: TicketConversationMode = .plan,
+        rollingSummary: String = "",
+        lastCompactedSequence: Int64 = 0,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.ticketID = ticketID
+        modeRaw = mode.rawValue
+        self.rollingSummary = rollingSummary
+        self.lastCompactedSequence = lastCompactedSequence
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+@Model
+final class TicketConversationMessage {
+    @Attribute(.unique) var id: UUID
+    var threadID: UUID
+    var ticketID: UUID
+    var sequence: Int64
+    var roleRaw: String
+    var statusRaw: String
+    var content: String
+    var requiresResponse: Bool
+    var runID: UUID?
+    var createdAt: Date
+    var updatedAt: Date
+
+    var role: TicketConversationRole {
+        get { TicketConversationRole(rawValue: roleRaw) ?? .user }
+        set { roleRaw = newValue.rawValue }
+    }
+
+    var status: TicketConversationMessageStatus {
+        get { TicketConversationMessageStatus(rawValue: statusRaw) ?? .pending }
+        set { statusRaw = newValue.rawValue }
+    }
+
+    init(
+        id: UUID = UUID(),
+        threadID: UUID,
+        ticketID: UUID,
+        sequence: Int64,
+        role: TicketConversationRole,
+        status: TicketConversationMessageStatus,
+        content: String,
+        requiresResponse: Bool = false,
+        runID: UUID? = nil,
+        createdAt: Date = .now,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.threadID = threadID
+        self.ticketID = ticketID
+        self.sequence = sequence
+        roleRaw = role.rawValue
+        statusRaw = status.rawValue
+        self.content = content
+        self.requiresResponse = requiresResponse
+        self.runID = runID
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+@Model
 final class TicketEvent {
     @Attribute(.unique) var id: UUID
     var ticketID: UUID

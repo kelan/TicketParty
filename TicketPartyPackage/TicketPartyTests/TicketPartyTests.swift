@@ -130,6 +130,152 @@ struct TicketPartyTests {
     }
 
     @Test
+    func conversationStore_threadCreationAndModePersistence() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+
+        let thread = try store.ensureThread(ticketID: ticketID)
+        #expect(thread.ticketID == ticketID)
+        #expect(thread.mode == .plan)
+
+        try store.setMode(ticketID: ticketID, mode: .implement)
+        #expect(try store.mode(ticketID: ticketID) == .implement)
+    }
+
+    @Test
+    func conversationStore_appendMessages_incrementsSequence() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+
+        let first = try store.appendUserMessage(ticketID: ticketID, text: "First")
+        let second = try store.appendUserMessage(ticketID: ticketID, text: "Second")
+        let assistant = try store.beginAssistantMessage(ticketID: ticketID, runID: nil)
+
+        #expect(first.sequence == 1)
+        #expect(second.sequence == 2)
+        #expect(assistant.sequence == 3)
+    }
+
+    @Test
+    func conversationStore_replayBundle_returnsSummaryAndLatestWindow() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+
+        for index in 1 ... 5 {
+            _ = try store.appendUserMessage(ticketID: ticketID, text: "Message \(index)")
+        }
+
+        let replay = try store.replayBundle(ticketID: ticketID, windowCount: 2, maxSummaryChars: 5_000)
+        #expect(replay.messages.count == 2)
+        #expect(replay.messages.map(\.content) == ["Message 4", "Message 5"])
+        #expect(replay.summary.contains("user: Message 1"))
+        #expect(replay.summary.contains("user: Message 3"))
+    }
+
+    @Test
+    func conversationStore_compaction_respectsSummaryCap() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+        let longLine = String(repeating: "x", count: 240)
+
+        for _ in 0 ..< 6 {
+            _ = try store.appendUserMessage(ticketID: ticketID, text: longLine)
+        }
+
+        try store.compactIfNeeded(ticketID: ticketID, windowCount: 1, maxSummaryChars: 120)
+        let replay = try store.replayBundle(ticketID: ticketID, windowCount: 1, maxSummaryChars: 120)
+
+        #expect(replay.summary.count <= 120)
+        #expect(replay.messages.count == 1)
+        #expect(try store.messages(ticketID: ticketID).count == 1)
+    }
+
+    @Test
+    func conversationStore_assistantStreaming_aggregatesLinesAndSetsRequiresResponse() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+
+        _ = try store.beginAssistantMessage(ticketID: ticketID, runID: nil)
+        try store.appendAssistantOutput(ticketID: ticketID, line: "Do this first.")
+        try store.appendAssistantOutput(ticketID: ticketID, line: "Can you confirm?")
+        try store.completeAssistantMessage(ticketID: ticketID, success: true, errorSummary: nil)
+
+        let messages = try store.messages(ticketID: ticketID)
+        let assistant = try #require(messages.last)
+        #expect(assistant.content == "Do this first.\nCan you confirm?")
+        #expect(assistant.status == .completed)
+        #expect(assistant.requiresResponse == true)
+    }
+
+    @Test
+    func conversationStore_terminalFailure_updatesMessageAndTranscript() throws {
+        _ = try TestEnvironment()
+        let transcriptStore = TicketTranscriptStore()
+        let conversationStore = TicketConversationStore()
+        let ticketID = UUID()
+        let runID = try transcriptStore.startRun(projectID: UUID(), ticketID: ticketID, requestID: nil)
+
+        _ = try conversationStore.beginAssistantMessage(ticketID: ticketID, runID: runID)
+        try conversationStore.appendAssistantOutput(ticketID: ticketID, line: "Working...")
+        try conversationStore.completeAssistantMessage(ticketID: ticketID, success: false, errorSummary: "Failed.")
+        try transcriptStore.completeRun(runID: runID, success: false, summary: "Failed.")
+
+        let message = try #require(try conversationStore.messages(ticketID: ticketID).last)
+        #expect(message.status == .failed)
+        #expect(message.content.contains("Failed."))
+
+        let run = try #require(try fetchRun(runID: runID))
+        #expect(run.status == .failed)
+        #expect(run.errorMessage == "Failed.")
+    }
+
+    @Test
+    @MainActor
+    func conversationViewModel_startImplementation_switchesModeAndAddsHandoffMessage() async throws {
+        _ = try TestEnvironment()
+        let conversationStore = TicketConversationStore()
+        let ticket = Ticket(
+            ticketNumber: 42,
+            displayID: "TT-42",
+            title: "Ship thread mode transition",
+            description: "Conversation handoff"
+        )
+        let project = Project(name: "Sample")
+        _ = try conversationStore.appendUserMessage(ticketID: ticket.id, text: "Let's plan this.")
+
+        let viewModel = CodexViewModel(
+            transcriptStore: TicketTranscriptStore(),
+            conversationStore: conversationStore,
+            startBackgroundTasks: false
+        )
+
+        await viewModel.startImplementation(ticket: ticket, project: project)
+
+        #expect(try conversationStore.mode(ticketID: ticket.id) == .implement)
+        let messages = try conversationStore.messages(ticketID: ticket.id)
+        #expect(messages.contains(where: { $0.role == .system && $0.content == "Mode switched to implement." }))
+        #expect(messages.contains(where: { $0.role == .user && $0.content.contains("Start implementation now using the agreed plan.") }))
+    }
+
+    @Test
+    func conversationStore_reloadsAcrossStoreInstances() throws {
+        _ = try TestEnvironment()
+        let ticketID = UUID()
+
+        let firstStore = TicketConversationStore()
+        _ = try firstStore.appendUserMessage(ticketID: ticketID, text: "Persist me")
+
+        let secondStore = TicketConversationStore()
+        let replay = try secondStore.replayBundle(ticketID: ticketID, windowCount: 12, maxSummaryChars: 12_000)
+        #expect(replay.messages.contains(where: { $0.content == "Persist me" }))
+    }
+
+    @Test
     func quickStatus_setsDoneTimestampAndClearsWhenReopened() {
         let ticket = Ticket(
             ticketNumber: 1,
