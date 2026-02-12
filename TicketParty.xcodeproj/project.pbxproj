@@ -164,6 +164,7 @@
 			buildPhases = (
 				764104F72F3B17AF0008EB12 /* Sources */,
 				764104F82F3B17AF0008EB12 /* Frameworks */,
+				76C5E3F32F3E6909004AFA9D /* Run SwiftLint */,
 				764104F92F3B17AF0008EB12 /* Resources */,
 			);
 			buildRules = (
@@ -297,6 +298,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		76C5E3F32F3E6909004AFA9D /* Run SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run SwiftLint";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "PATH=$PATH:/opt/homebrew/bin\njust swiftlint\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		764104F72F3B17AF0008EB12 /* Sources */ = {
