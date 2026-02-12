@@ -137,6 +137,9 @@ public struct TicketPartyRootView: View {
                 onSubmit: createTicket
             )
         }
+        .onAppear {
+            codexViewModel.configure(modelContext: modelContext)
+        }
         .onChange(of: projects.map(\.id)) { _, projectIDs in
             guard let selection else {
                 self.selection = .activity

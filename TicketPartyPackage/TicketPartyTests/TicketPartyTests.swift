@@ -378,6 +378,101 @@ struct TicketPartyTests {
     }
 
     @Test
+    @MainActor
+    func codexViewModel_startLoop_setsTicketInProgress_withConfiguredContext() async throws {
+        _ = try TestEnvironment()
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
+
+        let project = Project(name: "Loop Project", workingDirectory: "/tmp")
+        let ticket = Ticket(
+            ticketNumber: 99,
+            displayID: "TT-99",
+            projectID: project.id,
+            orderKey: TicketOrdering.keyStep,
+            title: "Loop start status",
+            description: "Set inProgress at task start",
+            stateID: TicketQuickStatus.backlog.stateID
+        )
+        context.insert(project)
+        context.insert(ticket)
+        try context.save()
+
+        let viewModel = CodexViewModel(
+            manager: CodexManager(resumeSubscriptionsOnInit: false),
+            startBackgroundTasks: true
+        )
+        viewModel.configure(modelContext: context)
+
+        await viewModel.startLoop(project: project, tickets: [ticket])
+
+        #expect(ticket.quickStatus == .inProgress)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_startLoop_setsTicketInProgress_whenBackgroundTasksAreDisabled() async throws {
+        _ = try TestEnvironment()
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
+
+        let project = Project(name: "Loop Project", workingDirectory: "/tmp")
+        let ticket = Ticket(
+            ticketNumber: 100,
+            displayID: "TT-100",
+            projectID: project.id,
+            orderKey: TicketOrdering.keyStep,
+            title: "Loop start status without event stream",
+            description: "Set inProgress without consuming loop events",
+            stateID: TicketQuickStatus.backlog.stateID
+        )
+        context.insert(project)
+        context.insert(ticket)
+        try context.save()
+
+        let viewModel = CodexViewModel(
+            manager: CodexManager(resumeSubscriptionsOnInit: false),
+            startBackgroundTasks: false
+        )
+        viewModel.configure(modelContext: context)
+
+        await viewModel.startLoop(project: project, tickets: [ticket])
+
+        #expect(ticket.quickStatus == .inProgress)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_missingContext_triggersDebugAssertionHandler_forLoopTaskStartStatusUpdate() async {
+        var assertionMessages: [String] = []
+        let viewModel = CodexViewModel(
+            manager: CodexManager(resumeSubscriptionsOnInit: false),
+            debugAssertionHandler: { message, _, _ in
+                assertionMessages.append(message)
+            },
+            startBackgroundTasks: false
+        )
+
+        let project = Project(name: "Loop Project", workingDirectory: "/tmp")
+        let ticket = Ticket(
+            ticketNumber: 101,
+            displayID: "TT-101",
+            projectID: project.id,
+            orderKey: TicketOrdering.keyStep,
+            title: "Missing context assertion",
+            description: "Trigger assertion hook",
+            stateID: TicketQuickStatus.backlog.stateID
+        )
+
+        await viewModel.startLoop(project: project, tickets: [ticket])
+
+        #expect(assertionMessages.count == 1)
+        let message = try #require(assertionMessages.first)
+        #expect(message.contains(TicketQuickStatus.inProgress.rawValue))
+        #expect(message.contains(ticket.id.uuidString))
+    }
+
+    @Test
     func loopManager_happyPath_completesRun() async throws {
         let projectID = UUID()
         let executor = LoopExecutorStub()

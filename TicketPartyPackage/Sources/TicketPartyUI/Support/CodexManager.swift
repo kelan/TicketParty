@@ -1,6 +1,7 @@
 import Darwin
 import Foundation
 import Observation
+import OSLog
 import SwiftData
 import TicketPartyDataStore
 import TicketPartyModels
@@ -1094,11 +1095,17 @@ struct CodexTicketOutputSnapshot {
 @MainActor
 @Observable
 final class CodexViewModel {
+    private static let statusLogger = Logger(
+        subsystem: "TicketParty",
+        category: "CodexViewModel.TicketStatus"
+    )
+
     private let manager: CodexManager
     private let loopManager: TicketLoopManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
     private let transcriptStore: TicketTranscriptStore
     private let conversationStore: TicketConversationStore
+    private let debugAssertionHandler: (String, StaticString, UInt) -> Void
     private var modelContext: ModelContext?
     private let minSpinnerDuration: Duration = .seconds(1)
     private let replayWindowCount = TicketConversationStore.defaultWindowCount
@@ -1125,6 +1132,9 @@ final class CodexViewModel {
         supervisorHealthChecker: CodexSupervisorHealthChecker = CodexSupervisorHealthChecker(),
         transcriptStore: TicketTranscriptStore = TicketTranscriptStore(),
         conversationStore: TicketConversationStore = TicketConversationStore(),
+        debugAssertionHandler: @escaping (String, StaticString, UInt) -> Void = { message, file, line in
+            assertionFailure(message, file: file, line: line)
+        },
         startBackgroundTasks: Bool = true
     ) {
         self.manager = manager
@@ -1132,6 +1142,7 @@ final class CodexViewModel {
         self.supervisorHealthChecker = supervisorHealthChecker
         self.transcriptStore = transcriptStore
         self.conversationStore = conversationStore
+        self.debugAssertionHandler = debugAssertionHandler
 
         if startBackgroundTasks {
             do {
@@ -1348,11 +1359,13 @@ final class CodexViewModel {
     func startLoop(project: Project, tickets: [Ticket]) async {
         do {
             let workingDirectory = try resolveProjectWorkingDirectory(project)
+            let loopTickets = loopTicketItems(from: tickets, projectID: project.id)
             try await loopManager.start(
                 projectID: project.id,
                 workingDirectory: workingDirectory,
-                tickets: loopTicketItems(from: tickets, projectID: project.id)
+                tickets: loopTickets
             )
+            await markCurrentLoopTicketAsInProgress(projectID: project.id, fallbackTickets: loopTickets)
             loopMessages[project.id] = nil
         } catch {
             loopMessages[project.id] = error.localizedDescription
@@ -1366,11 +1379,13 @@ final class CodexViewModel {
     func resumeLoop(project: Project, tickets: [Ticket]) async {
         do {
             let workingDirectory = try resolveProjectWorkingDirectory(project)
+            let loopTickets = loopTicketItems(from: tickets, projectID: project.id)
             try await loopManager.resume(
                 projectID: project.id,
                 workingDirectory: workingDirectory,
-                fallbackTickets: loopTicketItems(from: tickets, projectID: project.id)
+                fallbackTickets: loopTickets
             )
+            await markCurrentLoopTicketAsInProgress(projectID: project.id, fallbackTickets: loopTickets)
             loopMessages[project.id] = nil
         } catch {
             loopMessages[project.id] = error.localizedDescription
@@ -1706,8 +1721,31 @@ final class CodexViewModel {
         ticketIsSending = updated
     }
 
+    private func markCurrentLoopTicketAsInProgress(projectID: UUID, fallbackTickets: [LoopTicketItem]) async {
+        let currentTicketID: UUID?
+
+        switch await loopManager.state(projectID: projectID) {
+        case let .running(progress), let .paused(_, progress), let .failed(_, progress), let .cancelling(progress):
+            currentTicketID = progress.currentTicketID
+        case .idle, .preparingQueue, .completed:
+            currentTicketID = nil
+        }
+
+        guard let ticketID = currentTicketID ?? fallbackTickets.first?.id else {
+            return
+        }
+        setTicketStatus(ticketID: ticketID, status: .inProgress)
+    }
+
     private func setTicketStatus(ticketID: UUID, status: TicketQuickStatus) {
-        guard let modelContext else { return }
+        guard let modelContext else {
+            let message = "Missing model context while setting ticket status to \(status.rawValue) for \(ticketID.uuidString)."
+            Self.statusLogger.error("\(message, privacy: .public)")
+            #if DEBUG
+                debugAssertionHandler(message, #fileID, #line)
+            #endif
+            return
+        }
 
         do {
             let descriptor = FetchDescriptor<Ticket>(
