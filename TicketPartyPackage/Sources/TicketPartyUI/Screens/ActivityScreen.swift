@@ -87,73 +87,73 @@ struct ActivityView: View {
     private func agentStatusText(for projectID: UUID) -> String {
         switch codexViewModel.status(for: projectID) {
         case .running:
-            return "Agent running"
+            "Agent running"
         case .starting:
-            return "Agent starting"
+            "Agent starting"
         case .stopped:
-            return "Agent stopped"
+            "Agent stopped"
         case .error:
-            return "Agent error"
+            "Agent error"
         }
     }
 
     private func agentStatusColor(for projectID: UUID) -> Color {
         switch codexViewModel.status(for: projectID) {
         case .running:
-            return .green
+            .green
         case .starting:
-            return .orange
+            .orange
         case .error:
-            return .red
+            .red
         case .stopped:
-            return .secondary
+            .secondary
         }
     }
 
     private var supervisorColor: Color {
         switch codexViewModel.supervisorHealth {
         case .healthy:
-            return .green
+            .green
         case .notRunning:
-            return .secondary
+            .secondary
         case .staleRecord, .unreachable:
-            return .orange
+            .orange
         case .handshakeFailed, .invalidRecord:
-            return .red
+            .red
         }
     }
 
     private func loopStateText(for projectID: UUID) -> String {
         switch codexViewModel.loopState(for: projectID) {
         case .idle:
-            return "Loop idle"
+            "Loop idle"
         case .preparingQueue:
-            return "Loop preparing"
+            "Loop preparing"
         case let .running(progress):
-            return "Loop running \(progress.index)/\(progress.total)"
+            "Loop running \(progress.index)/\(progress.total)"
         case let .paused(_, progress):
-            return "Loop paused at \(progress.index)/\(progress.total)"
+            "Loop paused at \(progress.index)/\(progress.total)"
         case let .failed(failure, _):
-            return "Loop failed (\(failure.phase))"
+            "Loop failed (\(failure.phase))"
         case let .completed(summary):
-            return summary.cancelled ? "Loop cancelled" : "Loop completed"
+            summary.cancelled ? "Loop cancelled" : "Loop completed"
         case .cancelling:
-            return "Loop cancelling"
+            "Loop cancelling"
         }
     }
 
     private func loopStateColor(for projectID: UUID) -> Color {
         switch codexViewModel.loopState(for: projectID) {
         case .idle, .completed:
-            return .secondary
+            .secondary
         case .preparingQueue, .running:
-            return .blue
+            .blue
         case .paused:
-            return .orange
+            .orange
         case .failed:
-            return .red
+            .red
         case .cancelling:
-            return .orange
+            .orange
         }
     }
 

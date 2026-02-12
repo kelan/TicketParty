@@ -298,26 +298,26 @@ public struct TicketPartyRootView: View {
     private func agentStatusLabel(_ status: CodexProjectStatus) -> String {
         switch status {
         case .running:
-            return "Agent running"
+            "Agent running"
         case .starting:
-            return "Agent starting"
+            "Agent starting"
         case .stopped:
-            return "Agent stopped"
+            "Agent stopped"
         case .error:
-            return "Agent error"
+            "Agent error"
         }
     }
 
     private func agentStatusColor(_ status: CodexProjectStatus) -> Color {
         switch status {
         case .running:
-            return .green
+            .green
         case .starting:
-            return .orange
+            .orange
         case .error:
-            return .red
+            .red
         case .stopped:
-            return .secondary
+            .secondary
         }
     }
 
@@ -391,30 +391,30 @@ private struct SidebarActivityStatusLabel: View {
     private var statusTitle: String {
         switch status {
         case .healthy:
-            return "Supervisor running"
+            "Supervisor running"
         case .notRunning:
-            return "Supervisor not running"
+            "Supervisor not running"
         case .staleRecord:
-            return "Supervisor stale"
+            "Supervisor stale"
         case .unreachable:
-            return "Supervisor unreachable"
+            "Supervisor unreachable"
         case .handshakeFailed:
-            return "Supervisor handshake failed"
+            "Supervisor handshake failed"
         case .invalidRecord:
-            return "Supervisor invalid record"
+            "Supervisor invalid record"
         }
     }
 
     private var statusColor: Color {
         switch status {
         case .healthy:
-            return .green
+            .green
         case .notRunning:
-            return .secondary
+            .secondary
         case .staleRecord, .unreachable:
-            return .orange
+            .orange
         case .handshakeFailed, .invalidRecord:
-            return .red
+            .red
         }
     }
 }

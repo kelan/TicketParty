@@ -1,5 +1,5 @@
---swiftversion 5
---minversion 0.53.0
+--swiftversion 6
+--minversion 0.59.1
 
 # rules
 
@@ -59,7 +59,7 @@
 --enable redundantRawValues
 --enable redundantReturn
 --enable redundantSelf
-# Exceptions to redundantSelf: Logger.info()/etc, which are @autoclosures
+# Exceptions to redundantSelf: log.info()/etc, which are @autoclosures
 --selfrequired log
 --selfrequired info
 --selfrequired debug
@@ -121,14 +121,3 @@
 --typeattributes prev-line
 --storedvarattrs same-line
 --computedvarattrs same-line
-
---exclude **/DerivedData
---exclude **/Generated
---exclude **/*.generated.swift
---exclude **/*.graphql.swift
---exclude **/*.pb.swift
---exclude Modules/Sources/Events/Codegen/common/*.pb.swift
---exclude Modules/Sources/WDSCore/Tokens/*.swift
-
-# Exception: Allow formatting Rive generated files
---unexclude Modules/Sources/Animation/Generated/Rive

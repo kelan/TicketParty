@@ -34,9 +34,9 @@ public final class TicketConversationStore {
         public var errorDescription: String? {
             switch self {
             case let .threadNotFound(ticketID):
-                return "Conversation thread not found for ticket \(ticketID.uuidString)"
+                "Conversation thread not found for ticket \(ticketID.uuidString)"
             case let .streamingAssistantMessageNotFound(ticketID):
-                return "Streaming assistant message not found for ticket \(ticketID.uuidString)"
+                "Streaming assistant message not found for ticket \(ticketID.uuidString)"
             }
         }
     }

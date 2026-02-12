@@ -12,34 +12,34 @@ enum CodexSupervisorHealthStatus: Sendable, Equatable {
     var title: String {
         switch self {
         case let .healthy(pid, _):
-            return "Supervisor Running (PID \(pid))"
+            "Supervisor Running (PID \(pid))"
         case .notRunning:
-            return "Supervisor Not Running"
+            "Supervisor Not Running"
         case let .staleRecord(pid):
-            return "Supervisor Record Is Stale (PID \(pid))"
+            "Supervisor Record Is Stale (PID \(pid))"
         case let .unreachable(pid, _, _):
-            return "Supervisor Unreachable (PID \(pid))"
+            "Supervisor Unreachable (PID \(pid))"
         case .handshakeFailed:
-            return "Supervisor Handshake Failed"
+            "Supervisor Handshake Failed"
         case .invalidRecord:
-            return "Supervisor Record Is Invalid"
+            "Supervisor Record Is Invalid"
         }
     }
 
     var detail: String {
         switch self {
         case let .healthy(_, protocolVersion):
-            return "Protocol v\(protocolVersion)"
+            "Protocol v\(protocolVersion)"
         case .notRunning:
-            return "No runtime record found at expected path."
+            "No runtime record found at expected path."
         case .staleRecord:
-            return "Runtime record exists, but the process is not alive."
+            "Runtime record exists, but the process is not alive."
         case let .unreachable(_, endpoint, reason):
-            return "Runtime record exists, but socket \(endpoint) is unreachable: \(reason)"
+            "Runtime record exists, but socket \(endpoint) is unreachable: \(reason)"
         case let .handshakeFailed(message):
-            return message
+            message
         case let .invalidRecord(message):
-            return message
+            message
         }
     }
 }
@@ -82,11 +82,11 @@ actor CodexSupervisorHealthChecker {
         var errorDescription: String? {
             switch self {
             case let .invalidSocketPath(path):
-                return "Socket path is too long for unix domain socket: \(path)"
+                "Socket path is too long for unix domain socket: \(path)"
             case let .unreachable(message):
-                return message
+                message
             case let .failed(message):
-                return message
+                message
             }
         }
     }

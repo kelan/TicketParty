@@ -15,13 +15,13 @@ enum CodexProjectStatus: Sendable, Equatable {
     var title: String {
         switch self {
         case .stopped:
-            return "Stopped"
+            "Stopped"
         case .starting:
-            return "Starting"
+            "Starting"
         case .running:
-            return "Running"
+            "Running"
         case let .error(message):
-            return "Error: \(message)"
+            "Error: \(message)"
         }
     }
 }
@@ -59,15 +59,15 @@ actor CodexManager {
         var errorDescription: String? {
             switch self {
             case .missingWorkingDirectory:
-                return "Project working directory is required before sending to Codex."
+                "Project working directory is required before sending to Codex."
             case let .invalidWorkingDirectory(path):
-                return "Project working directory is invalid: \(path)"
+                "Project working directory is invalid: \(path)"
             case let .supervisorUnavailable(message):
-                return "Could not reach codex-supervisor: \(message)"
+                "Could not reach codex-supervisor: \(message)"
             case let .invalidResponse(message):
-                return "Supervisor returned invalid data: \(message)"
+                "Supervisor returned invalid data: \(message)"
             case let .requestFailed(message):
-                return "Supervisor request failed: \(message)"
+                "Supervisor request failed: \(message)"
             }
         }
     }
@@ -392,11 +392,10 @@ actor CodexManager {
             throw ManagerError.invalidResponse("Unexpected submitTask response type '\(type)'.")
         }
 
-        let resolvedTaskID: UUID
-        if let taskIDRaw = responseObject["taskID"] as? String, let parsed = UUID(uuidString: taskIDRaw) {
-            resolvedTaskID = parsed
+        let resolvedTaskID: UUID = if let taskIDRaw = responseObject["taskID"] as? String, let parsed = UUID(uuidString: taskIDRaw) {
+            parsed
         } else {
-            resolvedTaskID = taskID
+            taskID
         }
         let deduplicated = responseObject["deduplicated"] as? Bool ?? false
         return SubmitTaskResult(taskID: resolvedTaskID, deduplicated: deduplicated)
@@ -932,7 +931,7 @@ actor CodexManager {
         return responseObject
     }
 
-    private nonisolated static func encodeLine<T: Encodable>(_ value: T) throws -> Data {
+    private nonisolated static func encodeLine(_ value: some Encodable) throws -> Data {
         var payload = try JSONEncoder().encode(value)
         payload.append(0x0A)
         return payload
@@ -1190,10 +1189,10 @@ final class CodexViewModel {
 
             supervisorHealthTask = Task { [weak self] in
                 guard let self else { return }
-                await self.refreshSupervisorHealth()
+                await refreshSupervisorHealth()
                 while Task.isCancelled == false {
                     try? await Task.sleep(for: .seconds(5))
-                    await self.refreshSupervisorHealth()
+                    await refreshSupervisorHealth()
                 }
             }
         }
@@ -1669,16 +1668,15 @@ final class CodexViewModel {
         summary: String,
         messages: [TicketConversationMessageRecord]
     ) -> String {
-        let modeInstruction: String
-        switch mode {
+        let modeInstruction: String = switch mode {
         case .plan:
-            modeInstruction = """
+            """
             You are in PLAN mode.
             Focus on planning, design, and questions only.
             Do not perform implementation actions.
             """
         case .implement:
-            modeInstruction = """
+            """
             You are in IMPLEMENT mode.
             Execute implementation actions and provide concrete progress.
             """
@@ -1741,13 +1739,11 @@ final class CodexViewModel {
     }
 
     private func markCurrentLoopTicketAsInProgress(projectID: UUID, fallbackTickets: [LoopTicketItem]) async {
-        let currentTicketID: UUID?
-
-        switch await loopManager.state(projectID: projectID) {
+        let currentTicketID: UUID? = switch await loopManager.state(projectID: projectID) {
         case let .running(progress), let .paused(_, progress), let .failed(_, progress), let .cancelling(progress):
-            currentTicketID = progress.currentTicketID
+            progress.currentTicketID
         case .idle, .preparingQueue, .completed:
-            currentTicketID = nil
+            nil
         }
 
         guard let ticketID = currentTicketID ?? fallbackTickets.first?.id else {

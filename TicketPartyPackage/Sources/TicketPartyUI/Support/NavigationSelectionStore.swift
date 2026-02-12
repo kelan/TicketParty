@@ -69,11 +69,11 @@ struct NavigationSelectionStore {
         var sidebarSelection: SidebarSelection {
             switch self {
             case .activity:
-                return .activity
+                .activity
             case .allProjects:
-                return .allProjects
+                .allProjects
             case let .project(projectID):
-                return .project(projectID)
+                .project(projectID)
             }
         }
     }

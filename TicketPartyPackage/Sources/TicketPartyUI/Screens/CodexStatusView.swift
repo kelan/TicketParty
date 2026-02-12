@@ -103,13 +103,13 @@ struct CodexStatusView: View {
     private func statusColor(for projectID: UUID) -> Color {
         switch codexViewModel.status(for: projectID) {
         case .running:
-            return .green
+            .green
         case .starting:
-            return .orange
+            .orange
         case .error:
-            return .red
+            .red
         case .stopped:
-            return .secondary
+            .secondary
         }
     }
 
@@ -129,34 +129,34 @@ struct CodexStatusView: View {
     private func loopStateText(for projectID: UUID) -> String {
         switch codexViewModel.loopState(for: projectID) {
         case .idle:
-            return "Loop idle"
+            "Loop idle"
         case .preparingQueue:
-            return "Loop preparing"
+            "Loop preparing"
         case let .running(progress):
-            return "Loop running \(progress.index)/\(progress.total)"
+            "Loop running \(progress.index)/\(progress.total)"
         case let .paused(_, progress):
-            return "Loop paused at \(progress.index)/\(progress.total)"
+            "Loop paused at \(progress.index)/\(progress.total)"
         case let .failed(failure, _):
-            return "Loop failed (\(failure.phase))"
+            "Loop failed (\(failure.phase))"
         case let .completed(summary):
-            return summary.cancelled ? "Loop cancelled" : "Loop completed"
+            summary.cancelled ? "Loop cancelled" : "Loop completed"
         case .cancelling:
-            return "Loop cancelling"
+            "Loop cancelling"
         }
     }
 
     private func loopStateColor(for projectID: UUID) -> Color {
         switch codexViewModel.loopState(for: projectID) {
         case .idle, .completed:
-            return .secondary
+            .secondary
         case .preparingQueue, .running:
-            return .blue
+            .blue
         case .paused:
-            return .orange
+            .orange
         case .failed:
-            return .red
+            .red
         case .cancelling:
-            return .orange
+            .orange
         }
     }
 
@@ -169,7 +169,7 @@ struct CodexStatusView: View {
     private func loopButtons(for project: Project) -> [LoopButton] {
         switch codexViewModel.loopState(for: project.id) {
         case .idle, .completed:
-            return [
+            [
                 LoopButton(
                     title: "Run Loop",
                     isDisabled: false,
@@ -180,7 +180,7 @@ struct CodexStatusView: View {
             ]
 
         case .preparingQueue, .running:
-            return [
+            [
                 LoopButton(
                     title: "Pause",
                     isDisabled: false,
@@ -198,7 +198,7 @@ struct CodexStatusView: View {
             ]
 
         case .paused, .failed:
-            return [
+            [
                 LoopButton(
                     title: "Resume",
                     isDisabled: false,
@@ -216,7 +216,7 @@ struct CodexStatusView: View {
             ]
 
         case .cancelling:
-            return [
+            [
                 LoopButton(
                     title: "Cancelling…",
                     isDisabled: true,

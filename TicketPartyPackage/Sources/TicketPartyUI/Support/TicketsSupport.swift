@@ -20,46 +20,46 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .backlog:
-            return "Backlog"
+            "Backlog"
         case .needsThinking:
-            return "Needs Thinking"
+            "Needs Thinking"
         case .readyToImplement:
-            return "Ready to Implement"
+            "Ready to Implement"
         case .inProgress:
-            return "In Progress"
+            "In Progress"
         case .blocked:
-            return "Blocked"
+            "Blocked"
         case .review:
-            return "Review"
+            "Review"
         case .done:
-            return "Done"
+            "Done"
         case .skipped:
-            return "Skipped"
+            "Skipped"
         case .duplicate:
-            return "Duplicate"
+            "Duplicate"
         }
     }
 
     var stateID: UUID {
         switch self {
         case .backlog:
-            return Self.statusBacklogID
+            Self.statusBacklogID
         case .needsThinking:
-            return Self.statusNeedsThinkingID
+            Self.statusNeedsThinkingID
         case .readyToImplement:
-            return Self.statusReadyToImplementID
+            Self.statusReadyToImplementID
         case .inProgress:
-            return Self.statusInProgressID
+            Self.statusInProgressID
         case .blocked:
-            return Self.statusBlockedID
+            Self.statusBlockedID
         case .review:
-            return Self.statusReviewID
+            Self.statusReviewID
         case .done:
-            return Self.statusDoneID
+            Self.statusDoneID
         case .skipped:
-            return Self.statusSkippedID
+            Self.statusSkippedID
         case .duplicate:
-            return Self.statusDuplicateID
+            Self.statusDuplicateID
         }
     }
 
@@ -166,13 +166,13 @@ extension TicketSize {
     var title: String {
         switch self {
         case .quickTweak:
-            return "Quick Tweak"
+            "Quick Tweak"
         case .straightforwardFeature:
-            return "Straightforward Feature"
+            "Straightforward Feature"
         case .requiresThinking:
-            return "Requires Thinking"
+            "Requires Thinking"
         case .majorRefactor:
-            return "Major Refactor"
+            "Major Refactor"
         }
     }
 }

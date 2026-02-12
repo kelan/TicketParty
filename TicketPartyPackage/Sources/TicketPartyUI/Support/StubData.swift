@@ -27,23 +27,23 @@ enum StubTicketState: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .backlog:
-            return "Backlog"
+            "Backlog"
         case .needsThinking:
-            return "Needs Thinking"
+            "Needs Thinking"
         case .readyToImplement:
-            return "Ready to Implement"
+            "Ready to Implement"
         case .inProgress:
-            return "In Progress"
+            "In Progress"
         case .blocked:
-            return "Blocked"
+            "Blocked"
         case .review:
-            return "Review"
+            "Review"
         case .done:
-            return "Done"
+            "Done"
         case .skipped:
-            return "Skipped"
+            "Skipped"
         case .duplicate:
-            return "Duplicate"
+            "Duplicate"
         }
     }
 }
@@ -57,13 +57,13 @@ enum StubSize: String {
     var title: String {
         switch self {
         case .quickTweak:
-            return "Quick Tweak"
+            "Quick Tweak"
         case .straightforwardFeature:
-            return "Straightforward Feature"
+            "Straightforward Feature"
         case .requiresThinking:
-            return "Requires Thinking"
+            "Requires Thinking"
         case .majorRefactor:
-            return "Major Refactor"
+            "Major Refactor"
         }
     }
 }
@@ -72,13 +72,13 @@ extension StubSize {
     var ticketSize: TicketSize {
         switch self {
         case .quickTweak:
-            return .quickTweak
+            .quickTweak
         case .straightforwardFeature:
-            return .straightforwardFeature
+            .straightforwardFeature
         case .requiresThinking:
-            return .requiresThinking
+            .requiresThinking
         case .majorRefactor:
-            return .majorRefactor
+            .majorRefactor
         }
     }
 }
@@ -87,23 +87,23 @@ extension StubTicketState {
     var ticketQuickStatus: TicketQuickStatus {
         switch self {
         case .backlog:
-            return .backlog
+            .backlog
         case .needsThinking:
-            return .needsThinking
+            .needsThinking
         case .readyToImplement:
-            return .readyToImplement
+            .readyToImplement
         case .inProgress:
-            return .inProgress
+            .inProgress
         case .blocked:
-            return .blocked
+            .blocked
         case .review:
-            return .review
+            .review
         case .done:
-            return .done
+            .done
         case .skipped:
-            return .skipped
+            .skipped
         case .duplicate:
-            return .duplicate
+            .duplicate
         }
     }
 }

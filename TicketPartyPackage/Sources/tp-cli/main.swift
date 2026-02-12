@@ -50,7 +50,7 @@ private func printUsage() {
     )
 }
 
-private func printJSON<T: Encodable>(_ value: T) throws {
+private func printJSON(_ value: some Encodable) throws {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     encoder.dateEncodingStrategy = .iso8601

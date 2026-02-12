@@ -11,11 +11,11 @@ public final class TicketTranscriptStore {
         public var errorDescription: String? {
             switch self {
             case let .runNotFound(runID):
-                return "Transcript run not found: \(runID.uuidString)"
+                "Transcript run not found: \(runID.uuidString)"
             case .invalidUTF8Line:
-                return "Failed to encode transcript line as UTF-8."
+                "Failed to encode transcript line as UTF-8."
             case let .missingTranscriptFile(path):
-                return "Transcript file does not exist: \(path)"
+                "Transcript file does not exist: \(path)"
             }
         }
     }

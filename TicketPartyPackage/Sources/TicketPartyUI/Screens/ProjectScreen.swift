@@ -73,9 +73,9 @@ struct ProjectDetailView: View {
     private var visibleRecentDoneTickets: [Ticket] {
         switch selectedStateScope {
         case .active:
-            return doneTickets(in: scopedAndFilteredTickets, limit: activeDoneLimit)
+            doneTickets(in: scopedAndFilteredTickets, limit: activeDoneLimit)
         case .done:
-            return doneTickets(in: scopedAndFilteredTickets, limit: nil)
+            doneTickets(in: scopedAndFilteredTickets, limit: nil)
         }
     }
 
@@ -116,9 +116,9 @@ struct ProjectDetailView: View {
     private var canStartRunLoop: Bool {
         switch codexViewModel.loopState(for: project.id) {
         case .idle, .completed:
-            return true
+            true
         case .preparingQueue, .running, .paused, .failed, .cancelling:
-            return false
+            false
         }
     }
 
@@ -269,7 +269,7 @@ struct ProjectDetailView: View {
             }
 
             if isSoftFilterActive {
-                self.selectedTicketID = ids.first
+                selectedTicketID = ids.first
                 return
             }
 
@@ -429,7 +429,7 @@ struct ProjectDetailView: View {
 
     private func doneTickets(in tickets: [Ticket], limit: Int?) -> [Ticket] {
         let sortedDoneTickets = tickets
-            .filter { $0.quickStatus.isDone }
+            .filter(\.quickStatus.isDone)
             .sorted(by: sortByMostRecentlyUpdated)
 
         if let limit {
@@ -441,7 +441,7 @@ struct ProjectDetailView: View {
 
     private func backlogTickets(in tickets: [Ticket]) -> [Ticket] {
         tickets
-            .filter { $0.quickStatus.isBacklogSortable }
+            .filter(\.quickStatus.isBacklogSortable)
             .sorted(by: sortByOrderKeyAndCreatedAt)
     }
 
@@ -608,27 +608,27 @@ private enum TicketStateScope: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .active:
-            return "Active"
+            "Active"
         case .done:
-            return "Done"
+            "Done"
         }
     }
 
     var doneSectionTitle: String {
         switch self {
         case .active:
-            return "Recently Done ✅"
+            "Recently Done ✅"
         case .done:
-            return "Done"
+            "Done"
         }
     }
 
     func matches(_ status: TicketQuickStatus) -> Bool {
         switch self {
         case .active:
-            return true
+            true
         case .done:
-            return status.isDone
+            status.isDone
         }
     }
 }
@@ -1014,23 +1014,23 @@ private extension TicketQuickStatus {
     var tintColor: Color {
         switch self {
         case .backlog:
-            return .gray
+            .gray
         case .needsThinking:
-            return .purple
+            .purple
         case .readyToImplement:
-            return .cyan
+            .cyan
         case .inProgress:
-            return .blue
+            .blue
         case .blocked:
-            return .orange
+            .orange
         case .review:
-            return .indigo
+            .indigo
         case .done:
-            return .green
+            .green
         case .skipped:
-            return .brown
+            .brown
         case .duplicate:
-            return .mint
+            .mint
         }
     }
 }
@@ -1039,11 +1039,11 @@ private extension TicketConversationRole {
     var label: String {
         switch self {
         case .user:
-            return "You"
+            "You"
         case .assistant:
-            return "Codex"
+            "Codex"
         case .system:
-            return "System"
+            "System"
         }
     }
 }

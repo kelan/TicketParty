@@ -1,8 +1,19 @@
-included:
-    - Sources
 
 # Rules
 # Docs: https://realm.github.io/SwiftLint/rule-directory.html
+
+included:
+    - ../App
+    - ../UITests
+    - ../TicketPartyPackage/Package.swift
+    - ../TicketPartyPackage/Sources
+    - ../TicketPartyPackage/TicketPartyTests
+
+excluded:
+    - ../.build
+    - ../.swiftpm
+    - ../TicketPartyPackage/.build
+    - ../TicketPartyPackage/.swiftpm
 
 opt_in_rules:
     - array_init
@@ -32,7 +43,6 @@ opt_in_rules:
     - private_action
     - private_outlet
     - strict_fileprivate
-    - serializable_event
     - toggle_bool
 
 disabled_rules:
@@ -45,7 +55,7 @@ disabled_rules:
     - type_name
     - multiple_closures_with_trailing_closure
     - opening_brace
-    - redundant_optional_initialization
+    - implicit_optional_initialization
     - trailing_comma # Handled by SwiftFormat
     - vertical_whitespace # Handled by SwiftFormat
     - todo
@@ -101,9 +111,6 @@ nesting:
         error: 3
 
 overridden_super_call:
-    severity: error
-
-serializable_event:
     severity: error
 
 shorthand_operator:

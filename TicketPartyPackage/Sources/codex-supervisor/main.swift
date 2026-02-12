@@ -292,29 +292,29 @@ private enum SupervisorError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case let .invalidArgument(message):
-            return message
+            message
         case let .failedToCreateDirectory(message):
-            return "Failed to create runtime directory: \(message)"
+            "Failed to create runtime directory: \(message)"
         case let .failedToWriteRuntimeRecord(message):
-            return "Failed to write runtime record: \(message)"
+            "Failed to write runtime record: \(message)"
         case let .failedToDeleteRuntimeRecord(message):
-            return "Failed to delete runtime record: \(message)"
+            "Failed to delete runtime record: \(message)"
         case let .failedToStartControlServer(message):
-            return "Failed to start control server: \(message)"
+            "Failed to start control server: \(message)"
         case let .invalidSocketPath(path):
-            return "Socket path is too long for unix domain socket: \(path)"
+            "Socket path is too long for unix domain socket: \(path)"
         case let .invalidRequest(message):
-            return message
+            message
         case let .invalidWorkingDirectory(path):
-            return "Project working directory is invalid: \(path)"
+            "Project working directory is invalid: \(path)"
         case .missingNodeBinary:
-            return "Node.js executable not found. Install Node or provide --node-binary."
+            "Node.js executable not found. Install Node or provide --node-binary."
         case let .missingSidecarScript(path):
-            return "Codex sidecar script not found: \(path)"
+            "Codex sidecar script not found: \(path)"
         case let .sidecarLaunchFailed(message):
-            return "Failed to launch sidecar: \(message)"
+            "Failed to launch sidecar: \(message)"
         case let .sendFailed(message):
-            return "Failed to send ticket to sidecar: \(message)"
+            "Failed to send ticket to sidecar: \(message)"
         }
     }
 }
@@ -462,9 +462,9 @@ private final class ControlServer: @unchecked Sendable {
         }
         source.setCancelHandler { [weak self] in
             guard let self else { return }
-            if self.listeningFD >= 0 {
-                Darwin.close(self.listeningFD)
-                self.listeningFD = -1
+            if listeningFD >= 0 {
+                Darwin.close(listeningFD)
+                listeningFD = -1
             }
         }
 
@@ -2382,7 +2382,7 @@ private final class ControlServer: @unchecked Sendable {
             "/opt/homebrew/bin/node",
             "/usr/local/bin/node",
             "/usr/bin/node",
-        ].compactMap { $0 }
+        ].compactMap(\.self)
 
         let pathEntries = ProcessInfo.processInfo.environment["PATH"]?
             .split(separator: ":")
@@ -2406,7 +2406,7 @@ private final class ControlServer: @unchecked Sendable {
         sendJSON(ErrorResponse(message: message), to: fd)
     }
 
-    private func sendJSON<T: Encodable>(_ value: T, to fd: Int32) -> Bool {
+    private func sendJSON(_ value: some Encodable, to fd: Int32) -> Bool {
         do {
             var payload = try JSONEncoder().encode(value)
             payload.append(0x0A)

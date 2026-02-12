@@ -310,7 +310,7 @@ actor TicketLoopManager {
     private func startRunTask(projectID: UUID) {
         let task = Task.detached { [weak self] in
             guard let self else { return }
-            await self.runLoop(projectID: projectID)
+            await runLoop(projectID: projectID)
         }
         runTasks[projectID] = task
     }
@@ -701,9 +701,9 @@ actor TicketLoopManager {
     private func runPhase(from state: LoopRunState) -> TicketPhase? {
         switch state {
         case let .running(progress), let .paused(_, progress), let .failed(_, progress), let .cancelling(progress):
-            return progress.ticketPhase
+            progress.ticketPhase
         case .idle, .preparingQueue, .completed:
-            return nil
+            nil
         }
     }
 
@@ -730,9 +730,9 @@ enum TicketLoopError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .alreadyRunning:
-            return "A loop is already running for this project."
+            "A loop is already running for this project."
         case .noTickets:
-            return "No eligible tickets are available for this loop."
+            "No eligible tickets are available for this loop."
         }
     }
 }
