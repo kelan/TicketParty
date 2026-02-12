@@ -44,6 +44,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Resources/Assets.xcassets,
+				"Resources/TicketParty app icon.icon",
 				TicketPartyApp.swift,
 			);
 			target = 764104FA2F3B17AF0008EB12 /* TicketParty */;
@@ -369,8 +370,7 @@
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				ENABLE_APP_SANDBOX = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 			};
 			name = Debug;
 		};
@@ -379,8 +379,7 @@
 			baseConfigurationReferenceAnchor = 7641054F2F3B918A0008EB12 /* xcconfig */;
 			baseConfigurationReferenceRelativePath = TicketParty.xcconfig;
 			buildSettings = {
-				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				ENABLE_APP_SANDBOX = NO;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 			};
 			name = Release;
 		};
