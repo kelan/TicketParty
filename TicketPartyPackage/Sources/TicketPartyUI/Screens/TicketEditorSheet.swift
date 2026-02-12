@@ -59,6 +59,14 @@ struct TicketEditorSheet: View {
                         Text(size.title).tag(size)
                     }
                 }
+
+                if showsAddToTopOfBacklogOption {
+                    Toggle("Add to top of backlog", isOn: $draft.addToTopOfBacklog)
+                    #if os(macOS)
+                        .toggleStyle(.checkbox)
+                    #endif
+                        .help("Toggle Add to top of backlog (\u{2318}\u{21E7}T)")
+                }
             }
             .padding(16)
             .navigationTitle(title)
@@ -69,15 +77,7 @@ struct TicketEditorSheet: View {
                     }
                 }
 
-                ToolbarItemGroup(placement: .confirmationAction) {
-                    if showsAddToTopOfBacklogOption {
-                        Toggle("Add to top of backlog", isOn: $draft.addToTopOfBacklog)
-                        #if os(macOS)
-                            .toggleStyle(.checkbox)
-                        #endif
-                            .help("Toggle Add to top of backlog (\u{2318}\u{21E7}T)")
-                    }
-
+                ToolbarItem(placement: .confirmationAction) {
                     Button(submitLabel) {
                         onSubmit(draft.normalized)
                         dismiss()
