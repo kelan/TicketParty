@@ -13,7 +13,7 @@
 
 - Codex-authored commits must use `git codex-commit` (local alias for distinct author attribution).
 - Ensure local alias exists:
-  - `git config --local alias.codex-commit 'commit --author="Codex <kelan+codex@users.noreply.github.com>"'`
+  - `git config --local alias.codex-commit 'commit --author="Codex <kelan+codex@kelan.io>"'`
 - Codex-authored commits must include this trailer in the commit message:
   - `Agent: Codex`
 - Example:
