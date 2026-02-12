@@ -61,8 +61,14 @@ struct ProjectDetailView: View {
 
     private var visibleTickets: [Ticket] {
         visibleRecentDoneTickets +
+            visibleReviewTickets +
             visibleInProgressTickets +
             visibleBacklogTickets
+    }
+
+    private var visibleReviewTickets: [Ticket] {
+        guard selectedStateScope != .done else { return [] }
+        return reviewTickets(in: scopedAndFilteredTickets)
     }
 
     private var visibleInProgressTickets: [Ticket] {
@@ -126,6 +132,7 @@ struct ProjectDetailView: View {
         ProjectWorkspaceView(
             project: project,
             inProgressTickets: visibleInProgressTickets,
+            reviewTickets: visibleReviewTickets,
             recentDoneTickets: visibleRecentDoneTickets,
             backlogTickets: visibleBacklogTickets,
             selectedTicketID: $selectedTicketID,
@@ -424,6 +431,11 @@ struct ProjectDetailView: View {
             .filter { $0.quickStatus == .inProgress }
     }
 
+    private func reviewTickets(in tickets: [Ticket]) -> [Ticket] {
+        tickets
+            .filter { $0.quickStatus == .review }
+    }
+
     private func doneTickets(in tickets: [Ticket], limit: Int?) -> [Ticket] {
         let sortedDoneTickets = tickets
             .filter(\.quickStatus.isDone)
@@ -461,6 +473,7 @@ private struct ProjectWorkspaceView: View {
     @Environment(CodexViewModel.self) private var codexViewModel
     let project: Project
     let inProgressTickets: [Ticket]
+    let reviewTickets: [Ticket]
     let recentDoneTickets: [Ticket]
     let backlogTickets: [Ticket]
     @Binding var selectedTicketID: UUID?
@@ -483,6 +496,18 @@ private struct ProjectWorkspaceView: View {
                         }
                     } header: {
                         Text(doneSectionTitle)
+                            .font(.title2)
+                    }
+                }
+
+                if reviewTickets.isEmpty == false {
+                    Section {
+                        ForEach(reviewTickets, id: \.id) { ticket in
+                            ticketRow(ticket)
+                                .tag(ticket.id)
+                        }
+                    } header: {
+                        Text("Review 👀")
                             .font(.title2)
                     }
                 }
