@@ -805,7 +805,8 @@ private struct ProjectTicketDetailPanel: View {
                         .frame(minHeight: 140)
                     }
 
-                    TextField("Type a comment", text: $messageDraft)
+                    TextField("Type a comment", text: $messageDraft, axis: .vertical)
+                        .lineLimit(1 ... 4)
                         .textFieldStyle(.roundedBorder)
                         .disabled(isSending)
                         .onSubmit {
