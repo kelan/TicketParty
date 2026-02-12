@@ -185,6 +185,28 @@ struct TicketPartyTests {
     }
 
     @Test
+    func codexManager_ticketTaskIdempotencyKey_includesTicketAndRun() {
+        let ticketID = UUID()
+        let runID = UUID()
+
+        let key = CodexManager.ticketTaskIdempotencyKey(ticketID: ticketID, runID: runID)
+
+        #expect(key == "ticket:\(ticketID.uuidString):run:\(runID.uuidString):step:codex")
+    }
+
+    @Test
+    func codexManager_ticketTaskIdempotencyKey_changesAcrossRuns() {
+        let ticketID = UUID()
+        let firstRunID = UUID()
+        let secondRunID = UUID()
+
+        let firstKey = CodexManager.ticketTaskIdempotencyKey(ticketID: ticketID, runID: firstRunID)
+        let secondKey = CodexManager.ticketTaskIdempotencyKey(ticketID: ticketID, runID: secondRunID)
+
+        #expect(firstKey != secondKey)
+    }
+
+    @Test
     @MainActor
     func codexViewModel_streamEvents_persistTranscriptLifecycle() async throws {
         _ = try TestEnvironment()

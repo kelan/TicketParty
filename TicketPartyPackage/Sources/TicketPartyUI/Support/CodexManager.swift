@@ -180,6 +180,10 @@ actor CodexManager {
         }
     }
 
+    static func ticketTaskIdempotencyKey(ticketID: UUID, runID: UUID) -> String {
+        "ticket:\(ticketID.uuidString):run:\(runID.uuidString):step:codex"
+    }
+
     deinit {
         for task in subscriptionTasks.values {
             task.cancel()
@@ -248,6 +252,7 @@ actor CodexManager {
         projectID: UUID,
         workingDirectory: String?,
         ticketID: UUID,
+        idempotencyKey: String,
         title: String,
         description: String
     ) async throws {
@@ -258,11 +263,22 @@ actor CodexManager {
             projectID: projectID,
             ticketID: ticketID,
             kind: "codex.ticket",
-            idempotencyKey: "ticket:\(ticketID.uuidString):step:codex",
+            idempotencyKey: idempotencyKey,
             workingDirectory: resolvedWorkingDirectory,
             prompt: "\(title)\n\(description)",
             payload: [:]
         )
+
+        if submit.deduplicated, let current = try fetchTaskStatus(taskID: submit.taskID), current.isTerminal {
+            continuation.yield(
+                .ticketCompleted(
+                    ticketID: ticketID,
+                    success: current.success ?? false,
+                    summary: current.summary
+                )
+            )
+            return
+        }
 
         requestToTicket[submit.taskID] = ticketID
         requestToProject[submit.taskID] = projectID
@@ -1156,10 +1172,12 @@ final class CodexViewModel {
         await Task.yield()
 
         do {
+            let idempotencyKey = CodexManager.ticketTaskIdempotencyKey(ticketID: ticketID, runID: runID)
             try await manager.sendTicket(
                 projectID: projectID,
                 workingDirectory: workingDirectory,
                 ticketID: ticketID,
+                idempotencyKey: idempotencyKey,
                 title: title,
                 description: description
             )
