@@ -180,6 +180,7 @@ extension TicketSize {
 public extension Notification.Name {
     static let ticketPartyNewTicketRequested = Notification.Name("TicketParty.newTicketRequested")
     static let ticketPartyEditSelectedTicketRequested = Notification.Name("TicketParty.editSelectedTicketRequested")
+    static let ticketPartyToggleAddToTopOfBacklogRequested = Notification.Name("TicketParty.toggleAddToTopOfBacklogRequested")
     static let ticketPartyMoveSelectedTicketToTopRequested = Notification.Name("TicketParty.moveSelectedTicketToTopRequested")
     static let ticketPartyMoveSelectedTicketUpRequested = Notification.Name("TicketParty.moveSelectedTicketUpRequested")
     static let ticketPartyMoveSelectedTicketDownRequested = Notification.Name("TicketParty.moveSelectedTicketDownRequested")

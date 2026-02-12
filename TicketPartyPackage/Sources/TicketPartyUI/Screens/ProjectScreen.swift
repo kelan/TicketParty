@@ -104,6 +104,13 @@ struct ProjectDetailView: View {
         return tickets.first { $0.id == selectedTicketID }
     }
 
+    private var canMoveSelectedTicketToTop: Bool {
+        guard isBacklogReorderingEnabled else { return false }
+        guard let selectedTicketID else { return false }
+        guard let currentIndex = visibleBacklogTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return false }
+        return currentIndex > 0
+    }
+
     private var availableProjects: [Project] {
         [project]
     }
@@ -139,12 +146,12 @@ struct ProjectDetailView: View {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     Task {
-                        await codexViewModel.startLoop(project: project, tickets: allTickets)
+                        await runPrimaryCodexAction()
                     }
                 } label: {
                     Image(systemName: "play.circle")
                 }
-                .help("Start Run Loop")
+                .help(primaryCodexActionHelpText)
                 .disabled(canStartRunLoop == false)
 
                 Button {
@@ -155,6 +162,14 @@ struct ProjectDetailView: View {
                 .help("New Ticket")
 
                 if let selectedTicket {
+                    Button {
+                        moveSelectedTicketToTop()
+                    } label: {
+                        Image(systemName: "arrow.up.to.line")
+                    }
+                    .help("Move Ticket to Top of Backlog")
+                    .disabled(canMoveSelectedTicketToTop == false)
+
                     Button {
                         openTicketForEditing(selectedTicket.id)
                     } label: {
@@ -206,6 +221,10 @@ struct ProjectDetailView: View {
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketDownRequested)) { _ in
             guard isPreview == false else { return }
             moveSelectedTicket(by: 1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketToTopRequested)) { _ in
+            guard isPreview == false else { return }
+            moveSelectedTicketToTop()
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyEditSelectedTicketRequested)) { _ in
             guard isPreview == false else { return }
@@ -267,6 +286,42 @@ struct ProjectDetailView: View {
         }
     }
 
+    private var hasRunnableLoopTickets: Bool {
+        tickets.contains(where: { $0.quickStatus.isDone == false })
+    }
+
+    private var shouldRunSelectedDoneTicketFollowUp: Bool {
+        guard hasRunnableLoopTickets == false else { return false }
+        guard let selectedTicket else { return false }
+        return selectedTicket.quickStatus == .done
+    }
+
+    private var primaryCodexActionHelpText: String {
+        if shouldRunSelectedDoneTicketFollowUp {
+            return "Send selected done ticket to Codex for a follow-up"
+        }
+        return "Start Run Loop"
+    }
+
+    private func runPrimaryCodexAction() async {
+        if shouldRunSelectedDoneTicketFollowUp, let selectedTicket {
+            if selectedTicket.quickStatus != .inProgress {
+                selectedTicket.quickStatus = .inProgress
+                selectedTicket.updatedAt = .now
+                do {
+                    try modelContext.save()
+                } catch {
+                    // Keep UI flow simple for now; we'll add user-visible error handling later.
+                }
+            }
+
+            await codexViewModel.send(ticket: selectedTicket, project: project)
+            return
+        }
+
+        await codexViewModel.startLoop(project: project, tickets: allTickets)
+    }
+
     private func requestEditSelectedTicket() {
         guard let selectedTicket else { return }
         openTicketForEditing(selectedTicket.id)
@@ -324,6 +379,17 @@ struct ProjectDetailView: View {
 
         var reorderedIDs = visibleBacklogTickets.map(\.id)
         reorderedIDs.move(fromOffsets: IndexSet(integer: currentIndex), toOffset: destination)
+        persistBacklogMove(ticketID: selectedTicketID, reorderedIDs: reorderedIDs)
+    }
+
+    private func moveSelectedTicketToTop() {
+        guard isBacklogReorderingEnabled else { return }
+        guard let selectedTicketID else { return }
+        guard let currentIndex = visibleBacklogTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
+        guard currentIndex > 0 else { return }
+
+        var reorderedIDs = visibleBacklogTickets.map(\.id)
+        reorderedIDs.move(fromOffsets: IndexSet(integer: currentIndex), toOffset: 0)
         persistBacklogMove(ticketID: selectedTicketID, reorderedIDs: reorderedIDs)
     }
 

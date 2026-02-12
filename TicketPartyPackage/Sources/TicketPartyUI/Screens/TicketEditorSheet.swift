@@ -6,6 +6,7 @@ struct TicketEditorSheet: View {
     let title: String
     let submitLabel: String
     let projects: [Project]
+    let showsAddToTopOfBacklogOption: Bool
     private let initialDraft: TicketDraft
     let onSubmit: (TicketDraft) -> Void
 
@@ -22,12 +23,14 @@ struct TicketEditorSheet: View {
         title: String,
         submitLabel: String,
         projects: [Project],
+        showsAddToTopOfBacklogOption: Bool = false,
         initialDraft: TicketDraft,
         onSubmit: @escaping (TicketDraft) -> Void
     ) {
         self.title = title
         self.submitLabel = submitLabel
         self.projects = projects
+        self.showsAddToTopOfBacklogOption = showsAddToTopOfBacklogOption
         self.initialDraft = initialDraft
         self.onSubmit = onSubmit
         _draft = State(initialValue: initialDraft)
@@ -66,7 +69,15 @@ struct TicketEditorSheet: View {
                     }
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItemGroup(placement: .confirmationAction) {
+                    if showsAddToTopOfBacklogOption {
+                        Toggle("Add to top of backlog", isOn: $draft.addToTopOfBacklog)
+                        #if os(macOS)
+                            .toggleStyle(.checkbox)
+                        #endif
+                            .help("Toggle Add to top of backlog (\u{2318}\u{21E7}T)")
+                    }
+
                     Button(submitLabel) {
                         onSubmit(draft.normalized)
                         dismiss()
@@ -82,6 +93,10 @@ struct TicketEditorSheet: View {
         }
         .onChange(of: projects.map(\.id)) { _, _ in
             applyDefaultProjectSelection()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ticketPartyToggleAddToTopOfBacklogRequested)) { _ in
+            guard showsAddToTopOfBacklogOption else { return }
+            draft.addToTopOfBacklog.toggle()
         }
         #if os(macOS)
         .presentationSizing(.fitted)

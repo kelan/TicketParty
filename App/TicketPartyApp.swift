@@ -40,6 +40,11 @@ struct TicketPartyApp: App {
                 }
                 .keyboardShortcut("e")
 
+                Button("Move Selected Ticket to Top of Backlog") {
+                    NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketToTopRequested, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .control, .shift])
+
                 Button("Move Selected Ticket Up") {
                     NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketUpRequested, object: nil)
                 }
@@ -49,6 +54,13 @@ struct TicketPartyApp: App {
                     NotificationCenter.default.post(name: .ticketPartyMoveSelectedTicketDownRequested, object: nil)
                 }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .control])
+
+                Divider()
+
+                Button("Toggle Add to Top of Backlog") {
+                    NotificationCenter.default.post(name: .ticketPartyToggleAddToTopOfBacklogRequested, object: nil)
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
             }
         }
 

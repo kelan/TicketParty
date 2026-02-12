@@ -132,6 +132,7 @@ public struct TicketPartyRootView: View {
                 title: "New Ticket",
                 submitLabel: "Create",
                 projects: projects,
+                showsAddToTopOfBacklogOption: true,
                 initialDraft: ticketDraft,
                 onSubmit: createTicket
             )
@@ -204,11 +205,53 @@ public struct TicketPartyRootView: View {
         modelContext.insert(ticket)
 
         do {
-            try modelContext.save()
+            if normalizedDraft.addToTopOfBacklog {
+                let afterTicketID = firstBacklogTicketID(projectID: projectID, excluding: ticket.id)
+                try TicketOrdering.moveTicket(
+                    context: modelContext,
+                    ticketID: ticket.id,
+                    projectID: projectID,
+                    scopeStateIDs: backlogStateIDs,
+                    beforeTicketID: nil,
+                    afterTicketID: afterTicketID
+                )
+            } else {
+                try modelContext.save()
+            }
+
             selection = .project(projectID)
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
+    }
+
+    private var backlogStateIDs: Set<UUID> {
+        [
+            TicketQuickStatus.backlog.stateID,
+            TicketQuickStatus.needsThinking.stateID,
+            TicketQuickStatus.readyToImplement.stateID,
+            TicketQuickStatus.blocked.stateID,
+        ]
+    }
+
+    private func firstBacklogTicketID(projectID: UUID, excluding excludedTicketID: UUID) -> UUID? {
+        let descriptor = FetchDescriptor<Ticket>(
+            predicate: #Predicate<Ticket> { ticket in
+                ticket.projectID == projectID &&
+                    ticket.closedAt == nil &&
+                    ticket.archivedAt == nil
+            },
+            sortBy: [SortDescriptor(\Ticket.orderKey, order: .forward), SortDescriptor(\Ticket.createdAt, order: .forward)]
+        )
+
+        guard let activeProjectTickets = try? modelContext.fetch(descriptor) else {
+            return nil
+        }
+
+        return activeProjectTickets.first { ticket in
+            ticket.id != excludedTicketID &&
+                backlogStateIDs.contains(ticket.stateID ?? TicketQuickStatus.backlog.stateID)
+        }?.id
     }
 
     private func presentNewTicketSheet(_ preferredProjectID: UUID? = nil) {
