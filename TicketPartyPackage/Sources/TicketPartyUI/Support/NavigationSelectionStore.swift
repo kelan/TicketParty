@@ -4,10 +4,12 @@ struct NavigationSelectionStore {
     private struct PersistedState: Codable {
         var sidebarSelection: PersistedSidebarSelection?
         var selectedTicketIDsByProjectID: [String: String]
+        var isArchivedProjectsExpanded: Bool?
 
         static let empty = PersistedState(
             sidebarSelection: nil,
-            selectedTicketIDsByProjectID: [:]
+            selectedTicketIDsByProjectID: [:],
+            isArchivedProjectsExpanded: nil
         )
     }
 
@@ -96,6 +98,16 @@ struct NavigationSelectionStore {
     func saveSidebarSelection(_ selection: SidebarSelection?) {
         var state = loadState()
         state.sidebarSelection = selection.map(PersistedSidebarSelection.init(sidebarSelection:))
+        persist(state)
+    }
+
+    func loadArchivedProjectsExpanded() -> Bool {
+        loadState().isArchivedProjectsExpanded ?? true
+    }
+
+    func saveArchivedProjectsExpanded(_ isExpanded: Bool) {
+        var state = loadState()
+        state.isArchivedProjectsExpanded = isExpanded
         persist(state)
     }
 

@@ -15,6 +15,7 @@ public struct TicketPartyRootView: View {
     @Query(sort: [SortDescriptor(\Ticket.updatedAt, order: .reverse)]) private var tickets: [Ticket]
 
     @State private var selection: SidebarSelection?
+    @State private var isArchivedProjectsExpanded: Bool
     @State private var isPresentingCreateProject = false
     @State private var isPresentingCreateTicket = false
     @State private var pendingProjectDeletion: ProjectDeletionRequest?
@@ -26,6 +27,7 @@ public struct TicketPartyRootView: View {
         let selectionStore = NavigationSelectionStore()
         self.selectionStore = selectionStore
         _selection = State(initialValue: selectionStore.loadSidebarSelection() ?? .activity)
+        _isArchivedProjectsExpanded = State(initialValue: selectionStore.loadArchivedProjectsExpanded())
     }
 
     private var orderedProjects: [Project] {
@@ -34,6 +36,10 @@ public struct TicketPartyRootView: View {
 
     private var activeProjects: [Project] {
         orderedProjects.filter { $0.isArchived == false }
+    }
+
+    private var archivedProjects: [Project] {
+        orderedProjects.filter(\.isArchived)
     }
 
     public var body: some View {
@@ -50,75 +56,18 @@ public struct TicketPartyRootView: View {
                 }
 
                 Section {
-                    ForEach(orderedProjects, id: \.id) { project in
-                        NavigationLink(value: SidebarSelection.project(project.id)) {
-                            let sidebarStatus = sidebarStatus(for: project)
-                            let agentStatus = codexViewModel.status(for: project.id)
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(project.name)
-                                        .font(.headline)
-                                    if project.isArchived {
-                                        Text("Archived")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                    ForEach(activeProjects, id: \.id) { project in
+                        projectSidebarLink(for: project)
+                    }
 
-                                Text("Updated \(updatedSubtitle(for: sidebarStatus.lastUpdated))")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-
-                                HStack(spacing: 6) {
-                                    Circle()
-                                        .fill(agentStatusColor(agentStatus))
-                                        .frame(width: 8, height: 8)
-
-                                    Text(agentStatusLabel(agentStatus))
-                                        .font(.caption2)
-                                        .foregroundStyle(agentStatusColor(agentStatus))
-                                        .lineLimit(1)
-                                }
-
-                                SidebarTicketStateSummary(stateCounts: sidebarStatus.runningStateCounts)
+                    if archivedProjects.isEmpty == false {
+                        DisclosureGroup(isExpanded: $isArchivedProjectsExpanded) {
+                            ForEach(archivedProjects, id: \.id) { project in
+                                projectSidebarLink(for: project)
                             }
-                            .padding(.vertical, 2)
-                            .opacity(project.isArchived ? 0.55 : 1)
-                        }
-                        .contextMenu {
-                            Button {
-                                toggleArchiveState(for: project)
-                            } label: {
-                                Label(
-                                    project.isArchived ? "Unarchive Project" : "Archive Project",
-                                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
-                                )
-                            }
-
-                            Divider()
-
-                            Button(role: .destructive) {
-                                requestProjectDeletion(project)
-                            } label: {
-                                Label("Delete Project", systemImage: "trash")
-                            }
-                        }
-                        .swipeActions(allowsFullSwipe: false) {
-                            Button {
-                                toggleArchiveState(for: project)
-                            } label: {
-                                Label(
-                                    project.isArchived ? "Unarchive" : "Archive",
-                                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
-                                )
-                            }
-                            .tint(project.isArchived ? .green : .secondary)
-
-                            Button(role: .destructive) {
-                                requestProjectDeletion(project)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
+                        } label: {
+                            Text("Archived")
+                                .font(.caption.weight(.semibold))
                         }
                     }
                 } header: {
@@ -216,6 +165,9 @@ public struct TicketPartyRootView: View {
         }
         .onChange(of: selection) { _, newSelection in
             selectionStore.saveSidebarSelection(newSelection)
+        }
+        .onChange(of: isArchivedProjectsExpanded) { _, isExpanded in
+            selectionStore.saveArchivedProjectsExpanded(isExpanded)
         }
         .onDeleteCommand {
             guard case let .project(projectID)? = selection else { return }
@@ -447,6 +399,78 @@ public struct TicketPartyRootView: View {
             try modelContext.save()
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+
+    private func projectSidebarLink(for project: Project) -> some View {
+        NavigationLink(value: SidebarSelection.project(project.id)) {
+            let sidebarStatus = sidebarStatus(for: project)
+            let agentStatus = codexViewModel.status(for: project.id)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(project.name)
+                        .font(.headline)
+                    if project.isArchived {
+                        Text("Archived")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text("Updated \(updatedSubtitle(for: sidebarStatus.lastUpdated))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(agentStatusColor(agentStatus))
+                        .frame(width: 8, height: 8)
+
+                    Text(agentStatusLabel(agentStatus))
+                        .font(.caption2)
+                        .foregroundStyle(agentStatusColor(agentStatus))
+                        .lineLimit(1)
+                }
+
+                SidebarTicketStateSummary(stateCounts: sidebarStatus.runningStateCounts)
+            }
+            .padding(.vertical, 2)
+            .opacity(project.isArchived ? 0.55 : 1)
+        }
+        .contextMenu {
+            Button {
+                toggleArchiveState(for: project)
+            } label: {
+                Label(
+                    project.isArchived ? "Unarchive Project" : "Archive Project",
+                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
+                )
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                requestProjectDeletion(project)
+            } label: {
+                Label("Delete Project", systemImage: "trash")
+            }
+        }
+        .swipeActions(allowsFullSwipe: false) {
+            Button {
+                toggleArchiveState(for: project)
+            } label: {
+                Label(
+                    project.isArchived ? "Unarchive" : "Archive",
+                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
+                )
+            }
+            .tint(project.isArchived ? .green : .secondary)
+
+            Button(role: .destructive) {
+                requestProjectDeletion(project)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 

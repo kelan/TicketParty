@@ -763,10 +763,12 @@ struct TicketPartyTests {
 
         store.saveSidebarSelection(.project(projectID))
         store.saveSelectedTicketID(ticketID, for: projectID)
+        store.saveArchivedProjectsExpanded(false)
 
         let reloadedStore = NavigationSelectionStore(userDefaults: defaults)
         #expect(reloadedStore.loadSidebarSelection() == .project(projectID))
         #expect(reloadedStore.loadSelectedTicketID(for: projectID) == ticketID)
+        #expect(reloadedStore.loadArchivedProjectsExpanded() == false)
     }
 
     @Test
@@ -812,6 +814,24 @@ struct TicketPartyTests {
     }
 
     @Test
+    func navigationSelectionStore_defaultsArchivedExpansionToExpandedForLegacyState() throws {
+        let suiteName = "TicketPartyTests.NavigationSelectionStore.Legacy.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let legacyState = """
+        {"sidebarSelection":{"kind":"allProjects"},"selectedTicketIDsByProjectID":{}}
+        """
+        defaults.set(Data(legacyState.utf8), forKey: "TicketParty.navigationSelection.v1")
+
+        let store = NavigationSelectionStore(userDefaults: defaults)
+        #expect(store.loadSidebarSelection() == .allProjects)
+        #expect(store.loadArchivedProjectsExpanded() == true)
+    }
+
+    @Test
     func projectListOrdering_sortsActiveBeforeArchived() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let activeOlder = Project(
@@ -838,8 +858,10 @@ struct TicketPartyTests {
         )
 
         let sorted = ProjectListOrdering.sorted([archivedNewer, activeNewer, archivedOlder, activeOlder])
+        let sortedIDs = sorted.map(\.id)
+        let expectedIDs = [activeOlder.id, activeNewer.id, archivedOlder.id, archivedNewer.id]
 
-        #expect(sorted.map(\.id) == [activeOlder.id, activeNewer.id, archivedOlder.id, archivedNewer.id])
+        #expect(sortedIDs == expectedIDs)
     }
 
     @Test
@@ -1176,7 +1198,10 @@ private final class SupervisorHelloStub: @unchecked Sendable {
             lineData = data
         }
 
-        return String(decoding: lineData, as: UTF8.self)
+        guard let line = String(bytes: lineData, encoding: .utf8) else {
+            return nil
+        }
+        return line
     }
 }
 
