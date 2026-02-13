@@ -14,7 +14,7 @@ private struct SupervisorConfiguration {
         let defaultRuntime = "~/Library/Application Support/TicketParty/runtime"
         let defaultRecord = "\(defaultRuntime)/supervisor.json"
         let defaultSocket = "\(defaultRuntime)/supervisor.sock"
-        let defaultSidecarScript = "~/dev/codex-sidecar/sidecar.mjs"
+        let defaultSidecarScript = "codex-sidecar/sidecar.mjs"
 
         var runtimeDirectory = defaultRuntime
         var recordPath = defaultRecord
@@ -70,7 +70,9 @@ private struct SupervisorConfiguration {
         )
     }
 
-    private static func value(for flag: String, in arguments: [String], at index: Int) throws -> String {
+    private static func value(for flag: String, in arguments: [String], at index: Int) throws
+        -> String
+    {
         guard index < arguments.count else {
             throw SupervisorError.invalidArgument("Missing value for \(flag)")
         }
@@ -661,7 +663,9 @@ private final class ControlServer: @unchecked Sendable {
             let modeRaw = request.mode,
             let mode = TaskMode(rawValue: modeRaw)
         else {
-            throw SupervisorError.invalidRequest("submitTask requires projectID, taskID, kind, and mode.")
+            throw SupervisorError.invalidRequest(
+                "submitTask requires projectID, taskID, kind, and mode."
+            )
         }
 
         guard
@@ -671,7 +675,9 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.invalidRequest("submitTask IDs must be valid UUID strings.")
         }
 
-        if let existingTaskID = findDeduplicatedTask(projectID: projectID, idempotencyKey: request.idempotencyKey) {
+        if let existingTaskID = findDeduplicatedTask(
+            projectID: projectID, idempotencyKey: request.idempotencyKey
+        ) {
             _ = sendJSON(
                 SubmitTaskResponse(taskID: existingTaskID.uuidString, deduplicated: true),
                 to: fd
@@ -775,24 +781,32 @@ private final class ControlServer: @unchecked Sendable {
             let prompt = request.prompt,
             let workingDirectory = request.workingDirectory
         else {
-            throw SupervisorError.invalidRequest("codex.ticket requires ticketID, workingDirectory, and prompt.")
+            throw SupervisorError.invalidRequest(
+                "codex.ticket requires ticketID, workingDirectory, and prompt."
+            )
         }
 
         guard
             let ticketID = UUID(uuidString: ticketIDRaw)
         else {
-            throw SupervisorError.invalidRequest("codex.ticket ticketID must be a valid UUID string.")
+            throw SupervisorError.invalidRequest(
+                "codex.ticket ticketID must be a valid UUID string."
+            )
         }
 
         let resolvedWorkingDirectory = try resolveWorkingDirectory(workingDirectory)
 
-        if mode == .implement, let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID) {
+        if mode == .implement,
+           let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID)
+        {
             throw SupervisorError.invalidRequest(
                 "Project \(projectID.uuidString) already has implementation in-flight request \(existing.requestID.uuidString)."
             )
         }
 
-        let session = try ensureWorker(projectID: projectID, workingDirectory: resolvedWorkingDirectory)
+        let session = try ensureWorker(
+            projectID: projectID, workingDirectory: resolvedWorkingDirectory
+        )
 
         let payload = SidecarSubmitCommand(
             threadId: ticketID.uuidString,
@@ -851,7 +865,9 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.invalidRequest("\(kind) requires ticketID and workingDirectory.")
         }
 
-        if mode == .implement, let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID) {
+        if mode == .implement,
+           let existing = firstImplementationInFlight(projectID: projectID, excluding: taskID)
+        {
             throw SupervisorError.invalidRequest(
                 "Project \(projectID.uuidString) already has implementation in-flight request \(existing.requestID.uuidString)."
             )
@@ -970,14 +986,16 @@ private final class ControlServer: @unchecked Sendable {
                 return (true, "Worktree clean.", [])
             }
             if status.exitCode != 0 {
-                let summary = status.stderr.isEmpty ? "Failed to check worktree status." : status.stderr
+                let summary =
+                    status.stderr.isEmpty ? "Failed to check worktree status." : status.stderr
                 return (false, summary, Self.splitOutput(status.stderr))
             }
             return (false, "Worktree is not clean.", dirtyLines)
 
         case "cleanup.runUnitTests":
-            let command = payload["command"]
-                ?? "xcodebuild -project TicketParty.xcodeproj -scheme TicketParty -destination 'platform=macOS' test -only-testing:TicketPartyTests"
+            let command =
+                payload["command"]
+                    ?? "xcodebuild -project TicketParty.xcodeproj -scheme TicketParty -destination 'platform=macOS' test -only-testing:TicketPartyTests"
             let result = runLocalCommand(
                 taskID: taskID,
                 executable: "/bin/zsh",
@@ -985,7 +1003,9 @@ private final class ControlServer: @unchecked Sendable {
                 workingDirectory: workingDirectory,
                 environment: commandEnvironment(workingDirectory: workingDirectory)
             )
-            let lines = Self.splitOutput(result.stdout + (result.stderr.isEmpty ? "" : "\n\(result.stderr)"))
+            let lines = Self.splitOutput(
+                result.stdout + (result.stderr.isEmpty ? "" : "\n\(result.stderr)")
+            )
             if result.exitCode == 0 {
                 return (true, "Unit tests passed.", lines)
             }
@@ -1030,10 +1050,12 @@ private final class ControlServer: @unchecked Sendable {
             return (false, "Failed to stage changes for commit.", lines)
         }
 
-        let normalizedTitle = payload["ticketTitle"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedTitle =
+            payload["ticketTitle"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = normalizedTitle.isEmpty ? "Untitled Ticket" : normalizedTitle
         let description = Self.summaryDescription(payload["ticketDescription"] ?? "")
-        let normalizedBase = payload["baseMessage"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedBase =
+            payload["baseMessage"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let baseMessage = normalizedBase.isEmpty ? "Ticket update" : normalizedBase
         let includeAgentTrailer = (payload["includeAgentTrailer"] ?? "true").lowercased() != "false"
 
@@ -1096,14 +1118,16 @@ private final class ControlServer: @unchecked Sendable {
 
         process.waitUntilExit()
 
-        let stdout = String(
-            data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
-        let stderr = String(
-            data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
-            encoding: .utf8
-        ) ?? ""
+        let stdout =
+            String(
+                data: stdoutPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
+        let stderr =
+            String(
+                data: stderrPipe.fileHandleForReading.readDataToEndOfFile(),
+                encoding: .utf8
+            ) ?? ""
 
         queue.sync {
             if runningTaskProcesses[taskID] === process {
@@ -1111,20 +1135,26 @@ private final class ControlServer: @unchecked Sendable {
             }
         }
 
-        return LocalCommandResult(exitCode: process.terminationStatus, stdout: stdout, stderr: stderr)
+        return LocalCommandResult(
+            exitCode: process.terminationStatus, stdout: stdout, stderr: stderr
+        )
     }
 
     private func commandEnvironment(workingDirectory: String?) -> [String: String] {
         var env = ProcessInfo.processInfo.environment
 
         // launchd does not include Homebrew by default; prepend stable tool paths.
-        let requiredPathSegments = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let requiredPathSegments = [
+            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ]
         let existingPathSegments = (env["PATH"] ?? "")
             .split(separator: ":")
             .map(String.init)
         var mergedPathSegments: [String] = []
         var seen: Set<String> = []
-        for segment in requiredPathSegments + existingPathSegments where seen.insert(segment).inserted {
+        for segment in requiredPathSegments + existingPathSegments
+            where seen.insert(segment).inserted
+        {
             mergedPathSegments.append(segment)
         }
         env["PATH"] = mergedPathSegments.joined(separator: ":")
@@ -1140,7 +1170,9 @@ private final class ControlServer: @unchecked Sendable {
                     "prek-\(URL(fileURLWithPath: workingDirectory).lastPathComponent)",
                     isDirectory: true
                 )
-            try? FileManager.default.createDirectory(at: prekHome, withIntermediateDirectories: true)
+            try? FileManager.default.createDirectory(
+                at: prekHome, withIntermediateDirectories: true
+            )
             env["PREK_HOME"] = prekHome.path
         }
 
@@ -1196,7 +1228,9 @@ private final class ControlServer: @unchecked Sendable {
             }
         }
 
-        _ = sendJSON(WorkerStatusResponse(workers: result.sorted { $0.projectID < $1.projectID }), to: fd)
+        _ = sendJSON(
+            WorkerStatusResponse(workers: result.sorted { $0.projectID < $1.projectID }), to: fd
+        )
     }
 
     private func handleAck(request: ControlRequest, fd: Int32) throws {
@@ -1250,7 +1284,9 @@ private final class ControlServer: @unchecked Sendable {
     private func handleListActiveTasks(fd: Int32) throws {
         var active: [ActiveTaskEntry] = []
         for projectTasks in taskRecords.values {
-            for task in projectTasks.values where task.state == "running" || task.state == "accepted" {
+            for task in projectTasks.values
+                where task.state == "running" || task.state == "accepted"
+            {
                 active.append(
                     ActiveTaskEntry(
                         projectID: task.projectID,
@@ -1280,7 +1316,8 @@ private final class ControlServer: @unchecked Sendable {
             throw SupervisorError.invalidRequest("cancelTask requires projectID and taskID UUIDs.")
         }
 
-        guard let activeRequest = activeRequests[taskID], activeRequest.projectID == projectID else {
+        guard let activeRequest = activeRequests[taskID], activeRequest.projectID == projectID
+        else {
             _ = sendJSON(AckResponse(type: "cancelTask.ok", message: nil), to: fd)
             return
         }
@@ -1290,7 +1327,10 @@ private final class ControlServer: @unchecked Sendable {
             if let process = runningTaskProcesses[taskID], process.isRunning {
                 process.terminate()
             }
-            recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.force_terminated")
+            recordTaskFailure(
+                projectID: activeRequest.projectID, taskID: taskID,
+                summary: "cancelled.force_terminated"
+            )
             emitTaskFailed(
                 projectID: activeRequest.projectID,
                 ticketID: activeRequest.ticketID,
@@ -1301,7 +1341,10 @@ private final class ControlServer: @unchecked Sendable {
 
         case .sidecar:
             guard let session = workers[projectID], session.process.isRunning else {
-                recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.worker_not_running")
+                recordTaskFailure(
+                    projectID: activeRequest.projectID, taskID: taskID,
+                    summary: "cancelled.worker_not_running"
+                )
                 emitTaskFailed(
                     projectID: activeRequest.projectID,
                     ticketID: activeRequest.ticketID,
@@ -1319,7 +1362,10 @@ private final class ControlServer: @unchecked Sendable {
             do {
                 try session.stdin.write(contentsOf: payload)
             } catch {
-                recordTaskFailure(projectID: activeRequest.projectID, taskID: taskID, summary: "cancelled.send_failed")
+                recordTaskFailure(
+                    projectID: activeRequest.projectID, taskID: taskID,
+                    summary: "cancelled.send_failed"
+                )
                 emitTaskFailed(
                     projectID: activeRequest.projectID,
                     ticketID: activeRequest.ticketID,
@@ -1334,7 +1380,8 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private func handleStopWorker(request: ControlRequest, fd: Int32) throws {
-        guard let projectIDRaw = request.projectID, let projectID = UUID(uuidString: projectIDRaw) else {
+        guard let projectIDRaw = request.projectID, let projectID = UUID(uuidString: projectIDRaw)
+        else {
             throw SupervisorError.invalidRequest("stopWorker requires a valid projectID UUID.")
         }
 
@@ -1389,7 +1436,9 @@ private final class ControlServer: @unchecked Sendable {
         process.terminationHandler = { [weak self] terminatedProcess in
             guard let server = self else { return }
             server.queue.async {
-                server.handleWorkerTermination(projectID: projectID, statusCode: terminatedProcess.terminationStatus)
+                server.handleWorkerTermination(
+                    projectID: projectID, statusCode: terminatedProcess.terminationStatus
+                )
             }
         }
 
@@ -1477,7 +1526,9 @@ private final class ControlServer: @unchecked Sendable {
         handleSidecarTypedEvent(type: type, payload: object, projectID: projectID, rawLine: line)
     }
 
-    private func handleSidecarTypedEvent(type: String, payload: [String: Any], projectID: UUID, rawLine: String) {
+    private func handleSidecarTypedEvent(
+        type: String, payload: [String: Any], projectID: UUID, rawLine: String
+    ) {
         let requestID = parseUUID(payload["requestId"] as? String)
         let activeRequest = resolveActiveRequest(projectID: projectID, requestID: requestID)
 
@@ -1533,7 +1584,9 @@ private final class ControlServer: @unchecked Sendable {
 
         case "ticket.error":
             guard let activeRequest else { return }
-            let message = payload["message"] as? String ?? payload["error"] as? String ?? "Unknown sidecar error"
+            let message =
+                payload["message"] as? String ?? payload["error"] as? String
+                    ?? "Unknown sidecar error"
             broadcast(
                 SupervisorEvent(
                     type: "ticket.error",
@@ -1552,9 +1605,10 @@ private final class ControlServer: @unchecked Sendable {
         case "ticket.completed":
             guard let activeRequest else { return }
             let success = payload["success"] as? Bool ?? false
-            let summary = payload["summary"] as? String
-                ?? payload["finalResponse"] as? String
-                ?? payload["error"] as? String
+            let summary =
+                payload["summary"] as? String
+                    ?? payload["finalResponse"] as? String
+                    ?? payload["error"] as? String
             recordTaskCompletion(
                 projectID: activeRequest.projectID,
                 taskID: activeRequest.requestID,
@@ -1594,14 +1648,16 @@ private final class ControlServer: @unchecked Sendable {
 
         case "codex.event":
             guard let activeRequest else { return }
-            if
-                let eventPayload = payload["event"] as? [String: Any],
-                let nestedType = eventPayload["type"] as? String
+            if let eventPayload = payload["event"] as? [String: Any],
+               let nestedType = eventPayload["type"] as? String
             {
                 switch nestedType {
                 case "turn.failed":
                     let message = extractErrorMessage(from: eventPayload) ?? "Codex turn failed."
-                    recordTaskFailure(projectID: activeRequest.projectID, taskID: activeRequest.requestID, summary: message)
+                    recordTaskFailure(
+                        projectID: activeRequest.projectID, taskID: activeRequest.requestID,
+                        summary: message
+                    )
                     broadcast(
                         SupervisorEvent(
                             type: "ticket.error",
@@ -1671,7 +1727,10 @@ private final class ControlServer: @unchecked Sendable {
 
                 case "turn.cancelled", "turn.canceled", "turn.aborted":
                     let message = "Codex turn was cancelled."
-                    recordTaskFailure(projectID: activeRequest.projectID, taskID: activeRequest.requestID, summary: message)
+                    recordTaskFailure(
+                        projectID: activeRequest.projectID, taskID: activeRequest.requestID,
+                        summary: message
+                    )
                     broadcast(
                         SupervisorEvent(
                             type: "ticket.error",
@@ -1773,11 +1832,10 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private func resolveActiveRequest(projectID: UUID, requestID: UUID?) -> ActiveRequest? {
-        if
-            let requestID,
-            let request = activeRequests[requestID],
-            request.projectID == projectID,
-            request.source == .sidecar
+        if let requestID,
+           let request = activeRequests[requestID],
+           request.projectID == projectID,
+           request.source == .sidecar
         {
             return request
         }
@@ -1812,7 +1870,9 @@ private final class ControlServer: @unchecked Sendable {
         for requestID in session.activeRequestIDs {
             guard let request = activeRequests[requestID] else { continue }
             let message = "Sidecar exited with status \(statusCode)."
-            recordTaskFailure(projectID: request.projectID, taskID: request.requestID, summary: message)
+            recordTaskFailure(
+                projectID: request.projectID, taskID: request.requestID, summary: message
+            )
             broadcast(
                 SupervisorEvent(
                     type: "ticket.error",
@@ -1883,7 +1943,9 @@ private final class ControlServer: @unchecked Sendable {
         for requestID in session.activeRequestIDs {
             guard let request = activeRequests[requestID] else { continue }
             let message = "Worker stopped before completion."
-            recordTaskFailure(projectID: request.projectID, taskID: request.requestID, summary: message)
+            recordTaskFailure(
+                projectID: request.projectID, taskID: request.requestID, summary: message
+            )
             broadcast(
                 SupervisorEvent(
                     type: "ticket.error",
@@ -1948,15 +2010,21 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private func eventsFileURL(projectID: UUID) -> URL {
-        projectDirectoryURL(projectID: projectID).appendingPathComponent("events.jsonl", isDirectory: false)
+        projectDirectoryURL(projectID: projectID).appendingPathComponent(
+            "events.jsonl", isDirectory: false
+        )
     }
 
     private func tasksFileURL(projectID: UUID) -> URL {
-        projectDirectoryURL(projectID: projectID).appendingPathComponent("tasks.json", isDirectory: false)
+        projectDirectoryURL(projectID: projectID).appendingPathComponent(
+            "tasks.json", isDirectory: false
+        )
     }
 
     private func metaFileURL(projectID: UUID) -> URL {
-        projectDirectoryURL(projectID: projectID).appendingPathComponent("meta.json", isDirectory: false)
+        projectDirectoryURL(projectID: projectID).appendingPathComponent(
+            "meta.json", isDirectory: false
+        )
     }
 
     private func preparePersistenceDirectories() throws {
@@ -1965,17 +2033,19 @@ private final class ControlServer: @unchecked Sendable {
 
     private func loadPersistedProjectState() throws {
         guard fileManager.fileExists(atPath: taskDataRootURL.path) else { return }
-        let entries = try fileManager.contentsOfDirectory(at: taskDataRootURL, includingPropertiesForKeys: nil)
+        let entries = try fileManager.contentsOfDirectory(
+            at: taskDataRootURL, includingPropertiesForKeys: nil
+        )
         let decoder = JSONDecoder()
 
         for entry in entries {
-            guard entry.hasDirectoryPath, let projectID = UUID(uuidString: entry.lastPathComponent) else { continue }
+            guard entry.hasDirectoryPath, let projectID = UUID(uuidString: entry.lastPathComponent)
+            else { continue }
 
             let metaURL = metaFileURL(projectID: projectID)
-            if
-                fileManager.fileExists(atPath: metaURL.path),
-                let data = try? Data(contentsOf: metaURL),
-                let decodedMeta = try? decoder.decode(ProjectLogMeta.self, from: data)
+            if fileManager.fileExists(atPath: metaURL.path),
+               let data = try? Data(contentsOf: metaURL),
+               let decodedMeta = try? decoder.decode(ProjectLogMeta.self, from: data)
             {
                 projectMeta[projectID] = decodedMeta
             } else {
@@ -1986,10 +2056,9 @@ private final class ControlServer: @unchecked Sendable {
             }
 
             let tasksURL = tasksFileURL(projectID: projectID)
-            if
-                fileManager.fileExists(atPath: tasksURL.path),
-                let data = try? Data(contentsOf: tasksURL),
-                let decodedTasks = try? decoder.decode([TaskStatusEntry].self, from: data)
+            if fileManager.fileExists(atPath: tasksURL.path),
+               let data = try? Data(contentsOf: tasksURL),
+               let decodedTasks = try? decoder.decode([TaskStatusEntry].self, from: data)
             {
                 var byID: [UUID: TaskStatusEntry] = [:]
                 var byIdempotency: [String: UUID] = [:]
@@ -2016,7 +2085,9 @@ private final class ControlServer: @unchecked Sendable {
         var maxEventID: Int64 = 0
         for line in Self.extractLines(from: data).lines {
             guard let lineData = line.data(using: .utf8) else { continue }
-            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else { continue }
+            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else {
+                continue
+            }
             if let eventID = event.eventID {
                 maxEventID = max(maxEventID, eventID)
             }
@@ -2033,7 +2104,9 @@ private final class ControlServer: @unchecked Sendable {
 
     private func persistTaskRecords(projectID: UUID) throws {
         try ensureProjectPersistenceDirectory(projectID: projectID)
-        let tasks = Array((taskRecords[projectID] ?? [:]).values).sorted { $0.startedAtEpochMS < $1.startedAtEpochMS }
+        let tasks = Array((taskRecords[projectID] ?? [:]).values).sorted {
+            $0.startedAtEpochMS < $1.startedAtEpochMS
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(tasks)
@@ -2085,12 +2158,19 @@ private final class ControlServer: @unchecked Sendable {
         do {
             try persistTaskRecords(projectID: projectID)
         } catch {
-            fputs("Warning: failed to persist task records for \(projectID): \(error.localizedDescription)\n", stderr)
+            fputs(
+                "Warning: failed to persist task records for \(projectID): \(error.localizedDescription)\n",
+                stderr
+            )
         }
     }
 
-    private func recordTaskCompletion(projectID: UUID, taskID: UUID, success: Bool, summary: String?) {
-        guard var projectTasks = taskRecords[projectID], var task = projectTasks[taskID] else { return }
+    private func recordTaskCompletion(
+        projectID: UUID, taskID: UUID, success: Bool, summary: String?
+    ) {
+        guard var projectTasks = taskRecords[projectID], var task = projectTasks[taskID] else {
+            return
+        }
         task.state = success ? "completed" : "failed"
         task.success = success
         task.summary = summary
@@ -2101,7 +2181,10 @@ private final class ControlServer: @unchecked Sendable {
         do {
             try persistTaskRecords(projectID: projectID)
         } catch {
-            fputs("Warning: failed to persist task records for \(projectID): \(error.localizedDescription)\n", stderr)
+            fputs(
+                "Warning: failed to persist task records for \(projectID): \(error.localizedDescription)\n",
+                stderr
+            )
         }
     }
 
@@ -2153,7 +2236,9 @@ private final class ControlServer: @unchecked Sendable {
         )
     }
 
-    private func emitTaskCompleted(projectID: UUID, ticketID: UUID?, requestID: UUID, summary: String?) {
+    private func emitTaskCompleted(
+        projectID: UUID, ticketID: UUID?, requestID: UUID, summary: String?
+    ) {
         broadcast(
             SupervisorEvent(
                 type: "task.completed",
@@ -2179,7 +2264,9 @@ private final class ControlServer: @unchecked Sendable {
         let decoder = JSONDecoder()
         for line in Self.extractLines(from: data).lines {
             guard let lineData = line.data(using: .utf8) else { continue }
-            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else { continue }
+            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else {
+                continue
+            }
             guard let eventID = event.eventID, eventID >= fromEventID else { continue }
             guard sendJSON(event, to: fd) else {
                 throw SupervisorError.sendFailed("Failed replaying events to subscriber.")
@@ -2203,7 +2290,10 @@ private final class ControlServer: @unchecked Sendable {
             }
             try pruneEventLogIfNeeded(projectID: projectID)
         } catch {
-            fputs("Warning: failed to append event log for \(projectID): \(error.localizedDescription)\n", stderr)
+            fputs(
+                "Warning: failed to append event log for \(projectID): \(error.localizedDescription)\n",
+                stderr
+            )
         }
     }
 
@@ -2228,7 +2318,9 @@ private final class ControlServer: @unchecked Sendable {
         var events: [SupervisorEvent] = []
         for line in Self.extractLines(from: data).lines {
             guard let lineData = line.data(using: .utf8) else { continue }
-            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else { continue }
+            guard let event = try? decoder.decode(SupervisorEvent.self, from: lineData) else {
+                continue
+            }
             if let timestamp = event.timestampEpochMS, timestamp < cutoff {
                 continue
             }
@@ -2270,9 +2362,8 @@ private final class ControlServer: @unchecked Sendable {
             )
         }
 
-        if
-            let projectIDRaw = eventToSend.projectID,
-            let projectID = UUID(uuidString: projectIDRaw)
+        if let projectIDRaw = eventToSend.projectID,
+           let projectID = UUID(uuidString: projectIDRaw)
         {
             var meta = projectMeta[projectID] ?? ProjectLogMeta(nextEventID: 1, lastAckedEventID: 0)
             let assignedEventID = meta.nextEventID
@@ -2321,11 +2412,12 @@ private final class ControlServer: @unchecked Sendable {
         return UUID(uuidString: rawValue)
     }
 
-    private func firstImplementationInFlight(projectID: UUID, excluding taskID: UUID) -> ActiveRequest? {
+    private func firstImplementationInFlight(projectID: UUID, excluding taskID: UUID)
+        -> ActiveRequest?
+    {
         activeRequests.values.first { request in
-            request.projectID == projectID &&
-                request.requestID != taskID &&
-                request.mode == .implement
+            request.projectID == projectID && request.requestID != taskID
+                && request.mode == .implement
         }
     }
 
@@ -2333,9 +2425,8 @@ private final class ControlServer: @unchecked Sendable {
         if let message = payload["message"] as? String {
             return message
         }
-        if
-            let error = payload["error"] as? [String: Any],
-            let message = error["message"] as? String
+        if let error = payload["error"] as? [String: Any],
+           let message = error["message"] as? String
         {
             return message
         }
@@ -2350,7 +2441,9 @@ private final class ControlServer: @unchecked Sendable {
 
         let expanded = (trimmed as NSString).expandingTildeInPath
         var isDirectory = ObjCBool(false)
-        guard fileManager.fileExists(atPath: expanded, isDirectory: &isDirectory), isDirectory.boolValue else {
+        guard fileManager.fileExists(atPath: expanded, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
             throw SupervisorError.invalidWorkingDirectory(expanded)
         }
 
@@ -2384,10 +2477,13 @@ private final class ControlServer: @unchecked Sendable {
             "/usr/bin/node",
         ].compactMap(\.self)
 
-        let pathEntries = ProcessInfo.processInfo.environment["PATH"]?
-            .split(separator: ":")
-            .map(String.init) ?? []
-        let defaultEntries = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"]
+        let pathEntries =
+            ProcessInfo.processInfo.environment["PATH"]?
+                .split(separator: ":")
+                .map(String.init) ?? []
+        let defaultEntries = [
+            "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+        ]
         let searchedEntries = Array(Set(pathEntries + defaultEntries))
 
         let pathCandidates = searchedEntries.map { entry in
@@ -2502,7 +2598,9 @@ private final class ControlServer: @unchecked Sendable {
         #if os(macOS)
             var enabled: Int32 = 1
             _ = withUnsafePointer(to: &enabled) { pointer in
-                setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size))
+                setsockopt(
+                    fd, SOL_SOCKET, SO_NOSIGPIPE, pointer, socklen_t(MemoryLayout<Int32>.size)
+                )
             }
         #endif
     }
@@ -2512,10 +2610,11 @@ private final class ControlServer: @unchecked Sendable {
     }
 
     private static func summaryDescription(_ rawDescription: String) -> String {
-        let normalized = rawDescription
-            .replacingOccurrences(of: "\n", with: " ")
-            .replacingOccurrences(of: "\r", with: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized =
+            rawDescription
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
         if normalized.isEmpty {
             return "(none)"
         }
@@ -2671,7 +2770,9 @@ private func printUsage() {
 }
 
 do {
-    let config = try SupervisorConfiguration.make(arguments: Array(CommandLine.arguments.dropFirst()))
+    let config = try SupervisorConfiguration.make(
+        arguments: Array(CommandLine.arguments.dropFirst())
+    )
     let runtime = SupervisorRuntime(configuration: config)
     try runtime.run()
 } catch {
