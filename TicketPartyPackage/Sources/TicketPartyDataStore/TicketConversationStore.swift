@@ -243,6 +243,22 @@ public final class TicketConversationStore {
         try context.save()
     }
 
+    public func deleteConversation(ticketID: UUID) throws {
+        let context = try makeContext()
+        let messages = try fetchMessages(ticketID: ticketID, context: context)
+        let thread = try fetchThread(ticketID: ticketID, context: context)
+        guard messages.isEmpty == false || thread != nil else { return }
+
+        for message in messages {
+            context.delete(message)
+        }
+        if let thread {
+            context.delete(thread)
+        }
+
+        try context.save()
+    }
+
     private func appendMessage(
         ticketID: UUID,
         role: TicketConversationRole,

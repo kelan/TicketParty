@@ -20,8 +20,11 @@ struct ProjectDetailView: View {
     @State private var isShowingFilterPopover = false
     @State private var isPresentingEditProject = false
     @State private var ticketEditSession: TicketEditSession?
+    @State private var pendingTicketDeletion: TicketDeletionRequest?
     private let activeDoneLimit = 5
     private let isPreview: Bool
+    private let transcriptStore = TicketTranscriptStore()
+    private let conversationStore = TicketConversationStore()
 
     init(
         project: Project,
@@ -141,6 +144,8 @@ struct ProjectDetailView: View {
             isBacklogReorderingEnabled: isBacklogReorderingEnabled,
             onMoveBacklogTickets: moveBacklogTickets,
             onOpenTicketForEditing: openTicketForEditing,
+            onRequestTicketDeletion: requestTicketDeletion,
+            canDeleteTickets: project.isArchived == false && isPreview == false,
             isPreview: isPreview
         )
         .navigationTitle(project.name)
@@ -238,6 +243,20 @@ struct ProjectDetailView: View {
                 )
             }
         }
+        .alert(
+            "Delete Ticket?",
+            isPresented: isDeleteTicketAlertPresented,
+            presenting: pendingTicketDeletion
+        ) { request in
+            Button("Delete", role: .destructive) {
+                deleteTicket(ticketID: request.id)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingTicketDeletion = nil
+            }
+        } message: { request in
+            Text("Delete \"\(request.title)\"?")
+        }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyMoveSelectedTicketUpRequested)) { _ in
             guard isPreview == false else { return }
             moveSelectedTicket(by: -1)
@@ -295,6 +314,17 @@ struct ProjectDetailView: View {
 
             selectedTicketID = ids.first
         }
+    }
+
+    private var isDeleteTicketAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingTicketDeletion != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    pendingTicketDeletion = nil
+                }
+            }
+        )
     }
 
     private func applyProjectEdits(_ draft: ProjectDraft) {
@@ -363,6 +393,75 @@ struct ProjectDetailView: View {
         guard project.isArchived == false else { return }
         selectedTicketID = ticketID
         ticketEditSession = TicketEditSession(id: ticketID)
+    }
+
+    private func requestTicketDeletion(_ ticket: Ticket) {
+        guard project.isArchived == false else { return }
+        pendingTicketDeletion = TicketDeletionRequest(id: ticket.id, title: ticket.title)
+    }
+
+    private func deleteTicket(ticketID: UUID) {
+        pendingTicketDeletion = nil
+
+        guard let ticket = allTickets.first(where: { $0.id == ticketID }) else { return }
+        if selectedTicketID == ticketID {
+            selectedTicketID = nil
+        }
+        if ticketEditSession?.id == ticketID {
+            ticketEditSession = nil
+        }
+
+        Task { @MainActor in
+            await codexViewModel.stop(ticket: ticket, project: project)
+            performTicketDeletion(ticketID: ticketID)
+        }
+    }
+
+    private func performTicketDeletion(ticketID: UUID) {
+        guard let ticket = allTickets.first(where: { $0.id == ticketID }) else {
+            return
+        }
+
+        do {
+            try conversationStore.deleteConversation(ticketID: ticketID)
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+
+        do {
+            try transcriptStore.deleteRuns(ticketID: ticketID)
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+
+        materializeTicketForDeletion(ticket)
+        modelContext.delete(ticket)
+        project.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+
+    private func materializeTicketForDeletion(_ ticket: Ticket) {
+        _ = ticket.id
+        _ = ticket.ticketNumber
+        _ = ticket.displayID
+        _ = ticket.projectID
+        _ = ticket.orderKey
+        _ = ticket.title
+        _ = ticket.ticketDescription
+        _ = ticket.size
+        _ = ticket.workflowID
+        _ = ticket.stateID
+        _ = ticket.assigneeID
+        _ = ticket.createdAt
+        _ = ticket.updatedAt
+        _ = ticket.doneAt
+        _ = ticket.closedAt
+        _ = ticket.archivedAt
     }
 
     private func applyTicketEdits(ticketID: UUID, draft: TicketDraft) {
@@ -515,6 +614,8 @@ private struct ProjectWorkspaceView: View {
     let isBacklogReorderingEnabled: Bool
     let onMoveBacklogTickets: (IndexSet, Int) -> Void
     let onOpenTicketForEditing: (UUID) -> Void
+    let onRequestTicketDeletion: (Ticket) -> Void
+    let canDeleteTickets: Bool
     let isPreview: Bool
 
     var body: some View {
@@ -633,6 +734,14 @@ private struct ProjectWorkspaceView: View {
             TicketStatusBadge(status: ticket.quickStatus)
         }
         .padding(.vertical, 2)
+        .contextMenu {
+            Button(role: .destructive) {
+                onRequestTicketDeletion(ticket)
+            } label: {
+                Label("Delete Ticket", systemImage: "trash")
+            }
+            .disabled(canDeleteTickets == false)
+        }
     }
 
     private func doneDateStamp(for ticket: Ticket) -> String? {
@@ -1155,6 +1264,11 @@ private extension TicketConversationMode {
 
 private struct TicketEditSession: Identifiable {
     let id: UUID
+}
+
+private struct TicketDeletionRequest: Identifiable {
+    let id: UUID
+    let title: String
 }
 
 struct ProjectEditorSheet: View {

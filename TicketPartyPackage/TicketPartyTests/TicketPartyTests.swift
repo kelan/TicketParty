@@ -130,6 +130,25 @@ struct TicketPartyTests {
     }
 
     @Test
+    func deleteRuns_removesRowsAndTranscriptFilesForTicket() throws {
+        _ = try TestEnvironment()
+        let store = TicketTranscriptStore()
+        let ticketID = UUID()
+        let runID = try store.startRun(projectID: UUID(), ticketID: ticketID, requestID: nil)
+        try store.appendOutput(runID: runID, line: "line")
+
+        let run = try #require(try fetchRun(runID: runID))
+        let transcriptURL = try transcriptFileURL(relativePath: run.fileRelativePath)
+        #expect(FileManager.default.fileExists(atPath: transcriptURL.path))
+
+        try store.deleteRuns(ticketID: ticketID)
+
+        #expect(try fetchRun(runID: runID) == nil)
+        #expect(try store.latestRun(ticketID: ticketID) == nil)
+        #expect(FileManager.default.fileExists(atPath: transcriptURL.path) == false)
+    }
+
+    @Test
     func conversationStore_threadCreationAndModePersistence() throws {
         _ = try TestEnvironment()
         let store = TicketConversationStore()
@@ -141,6 +160,35 @@ struct TicketPartyTests {
 
         try store.setMode(ticketID: ticketID, mode: .implement)
         #expect(try store.mode(ticketID: ticketID) == .implement)
+    }
+
+    @Test
+    func conversationStore_deleteConversation_removesThreadAndMessages() throws {
+        _ = try TestEnvironment()
+        let store = TicketConversationStore()
+        let ticketID = UUID()
+
+        try store.setMode(ticketID: ticketID, mode: .implement)
+        _ = try store.appendUserMessage(ticketID: ticketID, text: "First")
+        _ = try store.beginAssistantMessage(ticketID: ticketID, runID: nil)
+        try store.completeAssistantMessage(ticketID: ticketID, success: true, errorSummary: nil)
+        #expect(try store.messages(ticketID: ticketID).isEmpty == false)
+
+        try store.deleteConversation(ticketID: ticketID)
+        #expect(try store.messages(ticketID: ticketID).isEmpty)
+
+        do {
+            _ = try store.mode(ticketID: ticketID)
+            Issue.record("Expected missing thread after conversation deletion.")
+        } catch let error as TicketConversationStore.StoreError {
+            guard case let .threadNotFound(missingTicketID) = error else {
+                Issue.record("Expected threadNotFound error after deletion, got \(error.localizedDescription).")
+                return
+            }
+            #expect(missingTicketID == ticketID)
+        } catch {
+            Issue.record("Expected TicketConversationStore.StoreError, got \(error.localizedDescription).")
+        }
     }
 
     @Test
@@ -942,6 +990,12 @@ struct TicketPartyTests {
             }
         )
         return try context.fetch(descriptor).first
+    }
+
+    private func transcriptFileURL(relativePath: String) throws -> URL {
+        let storePath = try #require(ProcessInfo.processInfo.environment["TICKETPARTY_STORE_PATH"])
+        let storeURL = URL(fileURLWithPath: storePath)
+        return storeURL.deletingLastPathComponent().appendingPathComponent(relativePath)
     }
 
     private func waitForLoopTerminalState(

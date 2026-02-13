@@ -139,6 +139,28 @@ public final class TicketTranscriptStore {
         return try context.fetch(descriptor).first
     }
 
+    public func deleteRuns(ticketID: UUID, deleteFiles: Bool = true) throws {
+        let context = try makeContext()
+        let descriptor = FetchDescriptor<TicketTranscriptRun>(
+            predicate: #Predicate<TicketTranscriptRun> { run in
+                run.ticketID == ticketID
+            }
+        )
+        let runs = try context.fetch(descriptor)
+        guard runs.isEmpty == false else { return }
+
+        if deleteFiles {
+            for run in runs {
+                try deleteTranscriptFileIfPresent(relativePath: run.fileRelativePath)
+            }
+        }
+
+        for run in runs {
+            context.delete(run)
+        }
+        try context.save()
+    }
+
     public func loadTranscript(runID: UUID, maxBytes: Int?) throws -> String {
         let context = try makeContext()
         guard let run = try fetchRun(runID: runID, context: context) else {
@@ -224,6 +246,12 @@ public final class TicketTranscriptStore {
     private func absoluteURL(for relativePath: String) throws -> URL {
         let baseURL = try applicationSupportRootURL()
         return baseURL.appendingPathComponent(relativePath, isDirectory: false)
+    }
+
+    private func deleteTranscriptFileIfPresent(relativePath: String) throws {
+        let fileURL = try absoluteURL(for: relativePath)
+        guard fileManager.fileExists(atPath: fileURL.path) else { return }
+        try fileManager.removeItem(at: fileURL)
     }
 
     private func applicationSupportRootURL() throws -> URL {
