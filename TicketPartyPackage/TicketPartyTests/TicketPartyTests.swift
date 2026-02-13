@@ -467,7 +467,7 @@ struct TicketPartyTests {
 
     @Test
     @MainActor
-    func codexViewModel_statusAttentionIndicator_prioritizesErrorOverNeedsResponse() throws {
+    func codexViewModel_statusAttentionIndicator_prioritizesErrorOverNeedsResponse() async throws {
         _ = try TestEnvironment()
         let conversationStore = TicketConversationStore()
         let ticketID = UUID()
@@ -479,7 +479,7 @@ struct TicketPartyTests {
             conversationStore: conversationStore,
             startBackgroundTasks: false
         )
-        viewModel.loadConversation(ticketID: ticketID)
+        await viewModel.loadConversation(ticketID: ticketID)
         viewModel.ticketErrors[ticketID] = "Supervisor request failed"
 
         #expect(viewModel.statusAttentionIndicator(for: ticketID) == .error)
@@ -487,7 +487,7 @@ struct TicketPartyTests {
 
     @Test
     @MainActor
-    func codexViewModel_statusAttentionIndicator_returnsNeedsResponseForLatestCompletedAssistantMessage() throws {
+    func codexViewModel_statusAttentionIndicator_returnsNeedsResponseForLatestCompletedAssistantMessage() async throws {
         _ = try TestEnvironment()
         let conversationStore = TicketConversationStore()
         let ticketID = UUID()
@@ -499,7 +499,7 @@ struct TicketPartyTests {
             conversationStore: conversationStore,
             startBackgroundTasks: false
         )
-        viewModel.loadConversation(ticketID: ticketID)
+        await viewModel.loadConversation(ticketID: ticketID)
 
         #expect(viewModel.statusAttentionIndicator(for: ticketID) == .needsResponse)
     }

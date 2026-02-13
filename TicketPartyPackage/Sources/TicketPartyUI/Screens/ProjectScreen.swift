@@ -713,7 +713,7 @@ private struct ProjectTicketDetailPanel: View {
                 ticketDetailLayout(ticket: ticket)
                     .task(id: ticket.id) {
                         pendingConversationBottomScrollTicketID = ticket.id
-                        codexViewModel.loadConversation(ticketID: ticket.id)
+                        await codexViewModel.loadConversation(ticketID: ticket.id)
                     }
                     .onChange(of: ticket.id) { _, _ in
                         messageDraft = ""
@@ -840,21 +840,23 @@ private struct ProjectTicketDetailPanel: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                     DisclosureGroup("Raw Transcript", isExpanded: $isRawTranscriptExpanded) {
-                        ScrollView {
-                            let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
-                            Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
-                                .font(.system(.caption, design: .monospaced))
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                            if outputSnapshot.isTruncated {
-                                Text("Showing latest output segment.")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                        if isRawTranscriptExpanded {
+                            ScrollView {
+                                let outputSnapshot = codexViewModel.outputSnapshot(for: ticket.id, maxBytes: 200_000)
+                                Text(outputSnapshot.text.isEmpty ? "No output yet." : outputSnapshot.text)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                                if outputSnapshot.isTruncated {
+                                    Text("Showing latest output segment.")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                                }
                             }
+                            .frame(minHeight: 140)
                         }
-                        .frame(minHeight: 140)
                     }
 
                     TextField("Type a comment", text: $messageDraft, axis: .vertical)

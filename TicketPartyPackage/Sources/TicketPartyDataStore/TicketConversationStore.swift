@@ -162,8 +162,25 @@ public final class TicketConversationStore {
         try context.save()
     }
 
-    public func messages(ticketID: UUID) throws -> [TicketConversationMessageRecord] {
+    public func messages(ticketID: UUID, limit: Int? = nil) throws -> [TicketConversationMessageRecord] {
+        if let limit, limit <= 0 {
+            return []
+        }
+
         let context = try makeContext()
+
+        if let limit {
+            var descriptor = FetchDescriptor<TicketConversationMessage>(
+                predicate: #Predicate<TicketConversationMessage> { message in
+                    message.ticketID == ticketID
+                },
+                sortBy: [SortDescriptor(\TicketConversationMessage.sequence, order: .reverse)]
+            )
+            descriptor.fetchLimit = limit
+            let tailMessages = try context.fetch(descriptor)
+            return tailMessages.reversed().map(mapMessage)
+        }
+
         let descriptor = FetchDescriptor<TicketConversationMessage>(
             predicate: #Predicate<TicketConversationMessage> { message in
                 message.ticketID == ticketID

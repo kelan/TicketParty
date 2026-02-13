@@ -1117,6 +1117,33 @@ enum TicketStatusAttentionIndicator: Equatable {
     case needsResponse
 }
 
+private struct TicketConversationLoadResult: Sendable {
+    let mode: TicketConversationMode
+    let messages: [TicketConversationMessageRecord]
+}
+
+private actor ConversationSnapshotLoader {
+    private let conversationStore: TicketConversationStore
+    private let initialMessageLoadLimit: Int
+
+    init(
+        initialMessageLoadLimit: Int,
+        conversationStore: TicketConversationStore = TicketConversationStore()
+    ) {
+        self.initialMessageLoadLimit = initialMessageLoadLimit
+        self.conversationStore = conversationStore
+    }
+
+    func load(ticketID: UUID) throws -> TicketConversationLoadResult {
+        try Task.checkCancellation()
+        _ = try conversationStore.ensureThread(ticketID: ticketID)
+        let mode = try conversationStore.mode(ticketID: ticketID)
+        let messages = try conversationStore.messages(ticketID: ticketID, limit: initialMessageLoadLimit)
+        try Task.checkCancellation()
+        return TicketConversationLoadResult(mode: mode, messages: messages)
+    }
+}
+
 @MainActor
 @Observable
 final class CodexViewModel {
@@ -1124,12 +1151,15 @@ final class CodexViewModel {
         subsystem: "TicketParty",
         category: "CodexViewModel.TicketStatus"
     )
+    private static let initialConversationLoadLimit = 100
+    private static let conversationLoadDebounce: Duration = .milliseconds(120)
 
     private let manager: CodexManager
     private let loopManager: TicketLoopManager
     private let supervisorHealthChecker: CodexSupervisorHealthChecker
     private let transcriptStore: TicketTranscriptStore
     private let conversationStore: TicketConversationStore
+    private let conversationLoader: ConversationSnapshotLoader
     private let debugAssertionHandler: (String, StaticString, UInt) -> Void
     private var modelContext: ModelContext?
     private let minSpinnerDuration: Duration = .seconds(1)
@@ -1168,6 +1198,7 @@ final class CodexViewModel {
         self.supervisorHealthChecker = supervisorHealthChecker
         self.transcriptStore = transcriptStore
         self.conversationStore = conversationStore
+        conversationLoader = ConversationSnapshotLoader(initialMessageLoadLimit: Self.initialConversationLoadLimit)
         self.debugAssertionHandler = debugAssertionHandler
 
         if startBackgroundTasks {
@@ -1206,15 +1237,21 @@ final class CodexViewModel {
         }
     }
 
-    func loadConversation(ticketID: UUID) {
+    func loadConversation(ticketID: UUID) async {
         ticketConversationLoading[ticketID] = true
         defer { ticketConversationLoading[ticketID] = false }
 
         do {
-            _ = try conversationStore.ensureThread(ticketID: ticketID)
-            ticketConversationModes[ticketID] = try conversationStore.mode(ticketID: ticketID)
-            ticketConversationMessages[ticketID] = try conversationStore.messages(ticketID: ticketID)
+            try await Task.sleep(for: Self.conversationLoadDebounce)
+            try Task.checkCancellation()
+            let loadedConversation = try await conversationLoader.load(ticketID: ticketID)
+            guard Task.isCancelled == false else { return }
+            ticketConversationModes[ticketID] = loadedConversation.mode
+            ticketConversationMessages[ticketID] = loadedConversation.messages
+        } catch is CancellationError {
+            return
         } catch {
+            guard Task.isCancelled == false else { return }
             ticketErrors[ticketID] = "Failed to load conversation: \(error.localizedDescription)"
         }
     }
