@@ -787,6 +787,31 @@ struct TicketPartyTests {
     }
 
     @Test
+    func navigationSelectionStore_removeProject_clearsSidebarAndTicketSelectionForRemovedProject() throws {
+        let suiteName = "TicketPartyTests.NavigationSelectionStore.RemoveProject.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+
+        let removedProjectID = UUID()
+        let remainingProjectID = UUID()
+        let removedTicketID = UUID()
+        let remainingTicketID = UUID()
+        let store = NavigationSelectionStore(userDefaults: defaults)
+
+        store.saveSidebarSelection(.project(removedProjectID))
+        store.saveSelectedTicketID(removedTicketID, for: removedProjectID)
+        store.saveSelectedTicketID(remainingTicketID, for: remainingProjectID)
+
+        store.removeProject(removedProjectID)
+
+        #expect(store.loadSidebarSelection() == nil)
+        #expect(store.loadSelectedTicketID(for: removedProjectID) == nil)
+        #expect(store.loadSelectedTicketID(for: remainingProjectID) == remainingTicketID)
+    }
+
+    @Test
     func supervisorHealthChecker_instanceTokenMismatch_fallsBackToHealthy() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp", isDirectory: true)
             .appendingPathComponent("SupervisorHealthStub-\(UUID().uuidString)", isDirectory: true)

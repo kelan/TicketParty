@@ -17,6 +17,7 @@ public struct TicketPartyRootView: View {
     @State private var selection: SidebarSelection?
     @State private var isPresentingCreateProject = false
     @State private var isPresentingCreateTicket = false
+    @State private var pendingProjectDeletion: ProjectDeletionRequest?
     @State private var ticketDraft = TicketDraft()
     @State private var codexViewModel = CodexViewModel()
     private let selectionStore: NavigationSelectionStore
@@ -70,6 +71,20 @@ public struct TicketPartyRootView: View {
                             }
                             .padding(.vertical, 2)
                         }
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                requestProjectDeletion(project)
+                            } label: {
+                                Label("Delete Project", systemImage: "trash")
+                            }
+                        }
+                        .swipeActions {
+                            Button(role: .destructive) {
+                                requestProjectDeletion(project)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                     }
                 } header: {
                     HStack {
@@ -117,6 +132,20 @@ public struct TicketPartyRootView: View {
                 }
             }
         }
+        .alert(
+            "Delete Project?",
+            isPresented: isDeleteProjectAlertPresented,
+            presenting: pendingProjectDeletion
+        ) { request in
+            Button("Delete", role: .destructive) {
+                deleteProject(projectID: request.id)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingProjectDeletion = nil
+            }
+        } message: { request in
+            Text("Delete \"\(request.name)\" and all its tickets?")
+        }
         .sheet(isPresented: $isPresentingCreateProject) {
             ProjectEditorSheet(
                 title: "New Project",
@@ -152,6 +181,11 @@ public struct TicketPartyRootView: View {
         }
         .onChange(of: selection) { _, newSelection in
             selectionStore.saveSidebarSelection(newSelection)
+        }
+        .onDeleteCommand {
+            guard case let .project(projectID)? = selection else { return }
+            guard let project = projects.first(where: { $0.id == projectID }) else { return }
+            requestProjectDeletion(project)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyNewTicketRequested)) { _ in
             presentNewTicketSheet()
@@ -221,6 +255,61 @@ public struct TicketPartyRootView: View {
             }
 
             selection = .project(projectID)
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
+    }
+
+    private var isDeleteProjectAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingProjectDeletion != nil },
+            set: { isPresented in
+                if isPresented == false {
+                    pendingProjectDeletion = nil
+                }
+            }
+        )
+    }
+
+    private func requestProjectDeletion(_ project: Project) {
+        pendingProjectDeletion = ProjectDeletionRequest(id: project.id, name: project.name)
+    }
+
+    private func deleteProject(projectID: UUID) {
+        pendingProjectDeletion = nil
+
+        let ticketDescriptor = FetchDescriptor<Ticket>(
+            predicate: #Predicate<Ticket> { ticket in
+                ticket.projectID == projectID
+            }
+        )
+        let transcriptDescriptor = FetchDescriptor<TicketTranscriptRun>(
+            predicate: #Predicate<TicketTranscriptRun> { run in
+                run.projectID == projectID
+            }
+        )
+
+        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+
+        do {
+            let projectTickets = try modelContext.fetch(ticketDescriptor)
+            let projectTranscripts = try modelContext.fetch(transcriptDescriptor)
+
+            for ticket in projectTickets {
+                modelContext.delete(ticket)
+            }
+
+            for transcript in projectTranscripts {
+                modelContext.delete(transcript)
+            }
+
+            modelContext.delete(project)
+            try modelContext.save()
+
+            selectionStore.removeProject(projectID)
+            if case .project(projectID) = selection {
+                selection = .activity
+            }
         } catch {
             // Keep UI flow simple for now; we'll add user-visible error handling later.
         }
@@ -352,6 +441,11 @@ public struct TicketPartyRootView: View {
         formatter.timeStyle = .none
         return formatter
     }()
+}
+
+private struct ProjectDeletionRequest: Identifiable {
+    let id: UUID
+    let name: String
 }
 
 private struct ProjectSidebarStatus {

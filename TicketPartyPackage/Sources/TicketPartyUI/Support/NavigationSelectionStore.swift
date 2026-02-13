@@ -120,6 +120,17 @@ struct NavigationSelectionStore {
         persist(state)
     }
 
+    func removeProject(_ projectID: UUID) {
+        var state = loadState()
+        state.selectedTicketIDsByProjectID.removeValue(forKey: projectID.uuidString)
+
+        if case let .project(selectedProjectID)? = state.sidebarSelection, selectedProjectID == projectID {
+            state.sidebarSelection = nil
+        }
+
+        persist(state)
+    }
+
     private func loadState() -> PersistedState {
         guard let data = userDefaults.data(forKey: storageKey) else {
             return .empty
