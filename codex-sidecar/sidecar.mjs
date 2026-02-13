@@ -5,10 +5,10 @@ import { Codex } from "@openai/codex-sdk";
 
 const codex = new Codex();
 
-// threadId -> Thread
-const threads = new Map();
+// logical threadId (ticket ID) -> Codex thread ID
+const threadAliases = new Map();
 
-// requestId -> { controller: AbortController, mode: "plan" | "implement", threadId: string | null }
+// requestId -> { controller: AbortController, mode: "plan" | "implement", logicalThreadId: string | null, codexThreadId: string | null }
 const activeRequests = new Map();
 
 // threadId -> requestId
@@ -66,6 +66,19 @@ function parseThreadId(msg) {
   return "__invalid__";
 }
 
+function parseWorkingDirectory(msg) {
+  if (msg.workingDirectory == null) {
+    return null;
+  }
+  if (
+    typeof msg.workingDirectory === "string" &&
+    msg.workingDirectory.trim().length > 0
+  ) {
+    return msg.workingDirectory.trim();
+  }
+  return "__invalid__";
+}
+
 function hasImplementationInFlight() {
   for (const active of activeRequests.values()) {
     if (active.mode === "implement") {
@@ -75,19 +88,44 @@ function hasImplementationInFlight() {
   return false;
 }
 
-function setActiveThread(requestId, nextThreadId) {
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+function markThreadAlias(logicalThreadId, codexThreadId) {
+  if (
+    isNonEmptyString(logicalThreadId) &&
+    isNonEmptyString(codexThreadId) &&
+    logicalThreadId !== codexThreadId
+  ) {
+    threadAliases.set(logicalThreadId, codexThreadId);
+  }
+}
+
+function setActiveThreadBindings(
+  requestId,
+  { logicalThreadId = null, codexThreadId = null },
+) {
   const active = activeRequests.get(requestId);
   if (!active) return;
 
-  if (active.threadId && activeByThread.get(active.threadId) === requestId) {
-    activeByThread.delete(active.threadId);
+  const previousThreadIds = [active.logicalThreadId, active.codexThreadId];
+  for (const threadId of previousThreadIds) {
+    if (isNonEmptyString(threadId) && activeByThread.get(threadId) === requestId) {
+      activeByThread.delete(threadId);
+    }
   }
 
-  if (typeof nextThreadId === "string" && nextThreadId.length > 0) {
-    active.threadId = nextThreadId;
-    activeByThread.set(nextThreadId, requestId);
-  } else {
-    active.threadId = null;
+  active.logicalThreadId = isNonEmptyString(logicalThreadId)
+    ? logicalThreadId
+    : null;
+  active.codexThreadId = isNonEmptyString(codexThreadId) ? codexThreadId : null;
+
+  const nextThreadIds = [active.logicalThreadId, active.codexThreadId];
+  for (const threadId of nextThreadIds) {
+    if (isNonEmptyString(threadId)) {
+      activeByThread.set(threadId, requestId);
+    }
   }
 }
 
@@ -95,24 +133,66 @@ function clearActiveRequest(requestId) {
   const active = activeRequests.get(requestId);
   if (!active) return;
 
-  if (active.threadId && activeByThread.get(active.threadId) === requestId) {
-    activeByThread.delete(active.threadId);
+  const threadIds = [active.logicalThreadId, active.codexThreadId];
+  for (const threadId of threadIds) {
+    if (isNonEmptyString(threadId) && activeByThread.get(threadId) === requestId) {
+      activeByThread.delete(threadId);
+    }
   }
 
   activeRequests.delete(requestId);
 }
 
-function resolveThread(threadId) {
-  if (threadId) {
-    const existing = threads.get(threadId);
-    if (existing) return existing;
+function buildThreadOptions(mode, workingDirectory) {
+  return {
+    sandboxMode: mode === "implement" ? "workspace-write" : "read-only",
+    approvalPolicy: "never",
+    workingDirectory: workingDirectory ?? undefined,
+  };
+}
 
-    const resumed = codex.resumeThread(threadId);
-    threads.set(threadId, resumed);
-    return resumed;
+function isThreadBusy(requestedThreadId) {
+  if (!requestedThreadId) {
+    return false;
   }
 
-  return codex.startThread();
+  if (activeByThread.has(requestedThreadId)) {
+    return true;
+  }
+
+  const aliasedThreadId = threadAliases.get(requestedThreadId);
+  if (isNonEmptyString(aliasedThreadId) && activeByThread.has(aliasedThreadId)) {
+    return true;
+  }
+
+  return false;
+}
+
+function resolveThreadForRequest(requestedThreadId, mode, workingDirectory) {
+  const threadOptions = buildThreadOptions(mode, workingDirectory);
+
+  if (requestedThreadId) {
+    const aliasedThreadId = threadAliases.get(requestedThreadId);
+    if (isNonEmptyString(aliasedThreadId)) {
+      return {
+        thread: codex.resumeThread(aliasedThreadId, threadOptions),
+        logicalThreadId: requestedThreadId,
+        codexThreadId: aliasedThreadId,
+      };
+    }
+
+    return {
+      thread: codex.startThread(threadOptions),
+      logicalThreadId: requestedThreadId,
+      codexThreadId: null,
+    };
+  }
+
+  return {
+    thread: codex.startThread(threadOptions),
+    logicalThreadId: null,
+    codexThreadId: null,
+  };
 }
 
 async function handleSubmit(msg) {
@@ -150,6 +230,17 @@ async function handleSubmit(msg) {
     return;
   }
 
+  const workingDirectory = parseWorkingDirectory(msg);
+  if (workingDirectory === "__invalid__") {
+    await enqueueFrame({
+      type: "ticket.completed",
+      requestId,
+      success: false,
+      error: "invalid_working_directory",
+    });
+    return;
+  }
+
   if (activeRequests.has(requestId)) {
     await enqueueFrame({
       type: "ticket.completed",
@@ -183,7 +274,7 @@ async function handleSubmit(msg) {
     return;
   }
 
-  if (requestedThreadId && activeByThread.has(requestedThreadId)) {
+  if (isThreadBusy(requestedThreadId)) {
     await enqueueFrame({
       type: "ticket.completed",
       requestId,
@@ -195,13 +286,27 @@ async function handleSubmit(msg) {
     return;
   }
 
-  const thread = resolveThread(requestedThreadId);
+  const {
+    thread,
+    logicalThreadId,
+    codexThreadId: initialCodexThreadId,
+  } = resolveThreadForRequest(requestedThreadId, mode, workingDirectory);
   const controller = new AbortController();
 
-  activeRequests.set(requestId, { controller, mode, threadId: null });
-  setActiveThread(requestId, requestedThreadId);
+  activeRequests.set(requestId, {
+    controller,
+    mode,
+    logicalThreadId: null,
+    codexThreadId: null,
+  });
+  setActiveThreadBindings(requestId, {
+    logicalThreadId,
+    codexThreadId: initialCodexThreadId,
+  });
 
-  let currentThreadId = requestedThreadId ?? thread.id ?? null;
+  let currentThreadId =
+    initialCodexThreadId ?? logicalThreadId ?? thread.id ?? null;
+  markThreadAlias(logicalThreadId, currentThreadId);
   let finalResponse = "";
   let usage = null;
   let failureMessage = null;
@@ -220,8 +325,11 @@ async function handleSubmit(msg) {
     for await (const event of events) {
       if (event.type === "thread.started") {
         currentThreadId = event.thread_id;
-        threads.set(currentThreadId, thread);
-        setActiveThread(requestId, currentThreadId);
+        setActiveThreadBindings(requestId, {
+          logicalThreadId,
+          codexThreadId: currentThreadId,
+        });
+        markThreadAlias(logicalThreadId, currentThreadId);
       }
 
       if (
@@ -276,6 +384,7 @@ async function handleSubmit(msg) {
       error: message,
     });
   } finally {
+    markThreadAlias(logicalThreadId, currentThreadId);
     clearActiveRequest(requestId);
   }
 }

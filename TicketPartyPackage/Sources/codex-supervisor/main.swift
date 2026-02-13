@@ -271,6 +271,7 @@ private struct SidecarSubmitCommand: Encodable {
     let threadId: String
     let requestId: String
     let mode: String
+    let workingDirectory: String
     let prompt: String
 }
 
@@ -845,6 +846,7 @@ private final class ControlServer: @unchecked Sendable {
             threadId: ticketID.uuidString,
             requestId: taskID.uuidString,
             mode: mode.rawValue,
+            workingDirectory: resolvedWorkingDirectory,
             prompt: prompt
         )
         var data = try JSONEncoder().encode(payload)
