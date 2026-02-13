@@ -1,5 +1,9 @@
 # TicketParty
 
-TicketParty is a macOS app for queuing task for Codex to run in your project.
+<img src="docs/img/app-icon.png" width="128" height="128">
 
-Read more about the workflow here: [Ticket Party](https://kelan.io/2026/ticket-party/).
+TicketParty is a macOS app for queuing up tasks for Codex to run in your project.
+
+Read more about it [in my blog post](https://kelan.io/2026/ticket-party/).
+
+Current status: Very early MVP. Not ready for real use! But please LMK what you think about the idea.
