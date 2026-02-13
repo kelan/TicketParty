@@ -27,6 +27,8 @@ enum CodexProjectStatus: Sendable, Equatable {
 }
 
 actor CodexManager {
+    private static let controlProtocolMaxLineBytes = 1_048_576
+
     enum TaskMode: String, Sendable {
         case plan
         case implement
@@ -988,7 +990,7 @@ actor CodexManager {
     private nonisolated static func readBufferedLine(
         from fd: Int32,
         buffer: inout Data,
-        maxBytes: Int = 65_536
+        maxBytes: Int = controlProtocolMaxLineBytes
     ) -> SocketReadResult {
         if let newlineIndex = buffer.firstIndex(of: 0x0A) {
             var candidate = buffer.prefix(upTo: newlineIndex)

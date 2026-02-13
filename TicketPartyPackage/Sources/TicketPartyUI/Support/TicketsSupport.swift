@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import TicketPartyDataStore
 import TicketPartyModels
 
@@ -96,6 +97,41 @@ enum TicketQuickStatus: String, CaseIterable, Identifiable {
             preconditionFailure("Invalid status UUID: \(value)")
         }
         return id
+    }
+
+    static var sidebarStateSummaryOrder: [TicketQuickStatus] {
+        [
+            .inProgress,
+            .review,
+            .blocked,
+            .readyToImplement,
+            .needsThinking,
+            .backlog,
+            .done,
+        ]
+    }
+
+    var tintColor: Color {
+        switch self {
+        case .backlog:
+            .gray
+        case .needsThinking:
+            .purple
+        case .readyToImplement:
+            .cyan
+        case .inProgress:
+            .blue
+        case .blocked:
+            .orange
+        case .review:
+            .indigo
+        case .done:
+            .green
+        case .skipped:
+            .brown
+        case .duplicate:
+            .mint
+        }
     }
 }
 

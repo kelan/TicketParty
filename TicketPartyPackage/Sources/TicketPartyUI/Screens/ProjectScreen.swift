@@ -1067,29 +1067,6 @@ private extension TicketQuickStatus {
             self == .readyToImplement ||
             self == .blocked
     }
-
-    var tintColor: Color {
-        switch self {
-        case .backlog:
-            .gray
-        case .needsThinking:
-            .purple
-        case .readyToImplement:
-            .cyan
-        case .inProgress:
-            .blue
-        case .blocked:
-            .orange
-        case .review:
-            .indigo
-        case .done:
-            .green
-        case .skipped:
-            .brown
-        case .duplicate:
-            .mint
-        }
-    }
 }
 
 private extension TicketStatusAttentionIndicator {

@@ -339,6 +339,21 @@ struct TicketPartyTests {
     }
 
     @Test
+    func quickStatus_sidebarStateSummaryOrder_includesExpectedRunningStates() {
+        #expect(
+            TicketQuickStatus.sidebarStateSummaryOrder == [
+                .inProgress,
+                .review,
+                .blocked,
+                .readyToImplement,
+                .needsThinking,
+                .backlog,
+                .done,
+            ]
+        )
+    }
+
+    @Test
     func codexManager_ticketTaskIdempotencyKey_includesTicketAndRun() {
         let ticketID = UUID()
         let runID = UUID()

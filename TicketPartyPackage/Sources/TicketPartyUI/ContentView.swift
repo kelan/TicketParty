@@ -66,9 +66,7 @@ public struct TicketPartyRootView: View {
                                         .lineLimit(1)
                                 }
 
-                                Text("\(sidebarStatus.inProgressCount) in progress / \(sidebarStatus.backlogCount) backlog")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                                SidebarTicketStateSummary(stateCounts: sidebarStatus.runningStateCounts)
                             }
                             .padding(.vertical, 2)
                         }
@@ -270,28 +268,29 @@ public struct TicketPartyRootView: View {
 
     private func sidebarStatus(for project: Project) -> ProjectSidebarStatus {
         var latestUpdate: Date?
-        var inProgressCount = 0
-        var backlogCount = 0
+        var countByStatus: [TicketQuickStatus: Int] = Dictionary(
+            uniqueKeysWithValues: TicketQuickStatus.sidebarStateSummaryOrder.map { ($0, 0) }
+        )
 
         for ticket in tickets where ticket.projectID == project.id && ticket.archivedAt == nil {
             latestUpdate = max(latestUpdate ?? ticket.updatedAt, ticket.updatedAt)
 
-            switch ticket.quickStatus {
-            case .inProgress, .review:
-                inProgressCount += 1
-            case .backlog, .needsThinking, .readyToImplement, .blocked:
-                backlogCount += 1
-            case .done, .skipped, .duplicate:
-                break
+            let quickStatus = ticket.quickStatus
+            if countByStatus[quickStatus] != nil {
+                countByStatus[quickStatus, default: 0] += 1
             }
         }
 
         let lastUpdated = max(project.updatedAt, latestUpdate ?? project.updatedAt)
+        var runningStateCounts: [ProjectSidebarStateCount] = []
+        for status in TicketQuickStatus.sidebarStateSummaryOrder {
+            guard let count = countByStatus[status], count > 0 else { continue }
+            runningStateCounts.append(ProjectSidebarStateCount(status: status, count: count))
+        }
 
         return ProjectSidebarStatus(
             lastUpdated: lastUpdated,
-            inProgressCount: inProgressCount,
-            backlogCount: backlogCount
+            runningStateCounts: runningStateCounts
         )
     }
 
@@ -357,8 +356,47 @@ public struct TicketPartyRootView: View {
 
 private struct ProjectSidebarStatus {
     let lastUpdated: Date
-    let inProgressCount: Int
-    let backlogCount: Int
+    let runningStateCounts: [ProjectSidebarStateCount]
+}
+
+private struct ProjectSidebarStateCount: Identifiable {
+    let status: TicketQuickStatus
+    let count: Int
+
+    var id: TicketQuickStatus {
+        status
+    }
+}
+
+private struct SidebarTicketStateSummary: View {
+    let stateCounts: [ProjectSidebarStateCount]
+
+    var body: some View {
+        if stateCounts.isEmpty {
+            Text("No running tickets")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        } else {
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 30), alignment: .leading)],
+                alignment: .leading,
+                spacing: 4
+            ) {
+                ForEach(stateCounts) { stateCount in
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(stateCount.status.tintColor)
+                            .frame(width: 6, height: 6)
+
+                        Text("\(stateCount.count)")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .help("\(stateCount.count) \(stateCount.status.title)")
+                }
+            }
+        }
+    }
 }
 
 private struct SidebarActivityStatusLabel: View {
