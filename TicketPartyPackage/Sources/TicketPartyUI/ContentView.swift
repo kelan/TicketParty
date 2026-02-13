@@ -314,6 +314,31 @@ public struct TicketPartyRootView: View {
     private func deleteProject(projectID: UUID) {
         pendingProjectDeletion = nil
 
+        let shouldRestoreAllProjectsSelection = selection == .allProjects
+        selectionStore.removeProject(projectID)
+        selection = .activity
+
+        Task { @MainActor in
+            await Task.yield()
+
+            do {
+                try performProjectDeletion(projectID: projectID)
+
+                if shouldRestoreAllProjectsSelection, selection == .activity {
+                    selection = .allProjects
+                }
+            } catch {
+                // Keep UI flow simple for now; we'll add user-visible error handling later.
+            }
+        }
+    }
+
+    private func performProjectDeletion(projectID: UUID) throws {
+        let projectDescriptor = FetchDescriptor<Project>(
+            predicate: #Predicate<Project> { project in
+                project.id == projectID
+            }
+        )
         let ticketDescriptor = FetchDescriptor<Ticket>(
             predicate: #Predicate<Ticket> { ticket in
                 ticket.projectID == projectID
@@ -325,30 +350,41 @@ public struct TicketPartyRootView: View {
             }
         )
 
-        guard let project = projects.first(where: { $0.id == projectID }) else { return }
+        guard let project = try modelContext.fetch(projectDescriptor).first else { return }
 
-        do {
-            let projectTickets = try modelContext.fetch(ticketDescriptor)
-            let projectTranscripts = try modelContext.fetch(transcriptDescriptor)
+        let projectTickets = try modelContext.fetch(ticketDescriptor)
+        let projectTranscripts = try modelContext.fetch(transcriptDescriptor)
 
-            for ticket in projectTickets {
-                modelContext.delete(ticket)
-            }
-
-            for transcript in projectTranscripts {
-                modelContext.delete(transcript)
-            }
-
-            modelContext.delete(project)
-            try modelContext.save()
-
-            selectionStore.removeProject(projectID)
-            if case .project(projectID) = selection {
-                selection = .activity
-            }
-        } catch {
-            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        for ticket in projectTickets {
+            materializeTicketForDeletion(ticket)
+            modelContext.delete(ticket)
         }
+
+        for transcript in projectTranscripts {
+            modelContext.delete(transcript)
+        }
+
+        modelContext.delete(project)
+        try modelContext.save()
+    }
+
+    private func materializeTicketForDeletion(_ ticket: Ticket) {
+        _ = ticket.id
+        _ = ticket.ticketNumber
+        _ = ticket.displayID
+        _ = ticket.projectID
+        _ = ticket.orderKey
+        _ = ticket.title
+        _ = ticket.ticketDescription
+        _ = ticket.size
+        _ = ticket.workflowID
+        _ = ticket.stateID
+        _ = ticket.assigneeID
+        _ = ticket.createdAt
+        _ = ticket.updatedAt
+        _ = ticket.doneAt
+        _ = ticket.closedAt
+        _ = ticket.archivedAt
     }
 
     private var backlogStateIDs: Set<UUID> {
