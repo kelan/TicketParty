@@ -11,6 +11,8 @@ supervisor_binary := "$HOME/Library/Application Support/TicketParty/bin/codex-su
 supervisor_record := "$HOME/Library/Application Support/TicketParty/runtime/supervisor.json"
 supervisor_socket := "$HOME/Library/Application Support/TicketParty/runtime/supervisor.sock"
 supervisor_plist := "$HOME/Library/LaunchAgents/io.kelan.ticketparty.codex-supervisor.plist"
+sidecar_dir := "codex-sidecar"
+sidecar_script := "codex-sidecar/sidecar.mjs"
 
 swiftformat:
     swiftformat --config config/swiftformat .
@@ -19,6 +21,16 @@ swiftlint:
     swiftlint lint --config config/swiftlint.yml
 
 lint: swiftformat swiftlint
+
+sidecar-install:
+    test -f "{{sidecar_dir}}/package.json" || (echo "Missing {{sidecar_dir}}/package.json" && exit 1)
+    npm --prefix "{{sidecar_dir}}" ci
+
+sidecar-status:
+    test -f "{{sidecar_script}}" || (echo "Missing sidecar script at {{sidecar_script}}" && exit 1)
+    test -d "{{sidecar_dir}}/node_modules" || (echo "Missing {{sidecar_dir}}/node_modules (run: just sidecar-install)" && exit 1)
+    node --version
+    npm --prefix "{{sidecar_dir}}" ls --depth=0
 
 supervisor-build:
     swift build --package-path TicketPartyPackage -c release --product codex-supervisor
@@ -30,10 +42,10 @@ supervisor-install: supervisor-build
 
 supervisor-install-agent:
     mkdir -p "$HOME/Library/LaunchAgents" "{{supervisor_logs_dir}}" "{{supervisor_runtime_dir}}"
-    python3 -c 'import os, plistlib; from pathlib import Path; expand = lambda p: os.path.expandvars(os.path.expanduser(p)); plist_path = Path(expand("{{supervisor_plist}}")); plist_path.parent.mkdir(parents=True, exist_ok=True); data = {"Label": "{{supervisor_label}}", "ProgramArguments": [expand("{{supervisor_binary}}"), "--runtime-dir", expand("{{supervisor_runtime_dir}}"), "--record-path", expand("{{supervisor_record}}"), "--socket-path", expand("{{supervisor_socket}}")], "RunAtLoad": True, "KeepAlive": True, "ProcessType": "Background", "StandardOutPath": expand("{{supervisor_logs_dir}}/codex-supervisor.out.log"), "StandardErrorPath": expand("{{supervisor_logs_dir}}/codex-supervisor.err.log")}; plistlib.dump(data, plist_path.open("wb"), sort_keys=False)'
+    python3 -c 'import os, plistlib; from pathlib import Path; expand = lambda p: os.path.expandvars(os.path.expanduser(p)); plist_path = Path(expand("{{supervisor_plist}}")); plist_path.parent.mkdir(parents=True, exist_ok=True); sidecar_script = str(Path(expand("{{sidecar_script}}")).resolve()); data = {"Label": "{{supervisor_label}}", "ProgramArguments": [expand("{{supervisor_binary}}"), "--runtime-dir", expand("{{supervisor_runtime_dir}}"), "--record-path", expand("{{supervisor_record}}"), "--socket-path", expand("{{supervisor_socket}}"), "--sidecar-script", sidecar_script], "RunAtLoad": True, "KeepAlive": True, "ProcessType": "Background", "StandardOutPath": expand("{{supervisor_logs_dir}}/codex-supervisor.out.log"), "StandardErrorPath": expand("{{supervisor_logs_dir}}/codex-supervisor.err.log")}; plistlib.dump(data, plist_path.open("wb"), sort_keys=False)'
     plutil -lint "{{supervisor_plist}}"
 
-supervisor-start: supervisor-install supervisor-install-agent
+supervisor-start: sidecar-install supervisor-install supervisor-install-agent
     launchctl bootout "gui/$(id -u)" "{{supervisor_plist}}" >/dev/null 2>&1 || true
     launchctl bootstrap "gui/$(id -u)" "{{supervisor_plist}}"
     launchctl enable "gui/$(id -u)/{{supervisor_label}}"
@@ -47,3 +59,7 @@ supervisor-status:
 
 supervisor-logs:
     tail -n 100 "{{supervisor_logs_dir}}/codex-supervisor.out.log" "{{supervisor_logs_dir}}/codex-supervisor.err.log"
+
+codex-setup: supervisor-start
+
+codex-doctor: sidecar-status supervisor-status
