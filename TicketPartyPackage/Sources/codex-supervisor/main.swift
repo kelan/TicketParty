@@ -116,6 +116,8 @@ private struct SupervisorConfiguration {
     }
 }
 
+private let controlProtocolMaxLineBytes = 1_048_576
+
 private struct SupervisorRuntimeRecord: Codable {
     let pid: Int32
     let startedAtEpochMS: Int64
@@ -2543,7 +2545,7 @@ private final class ControlServer: @unchecked Sendable {
         }
     }
 
-    private func readLine(from fd: Int32, maxBytes: Int = 65_536) -> String? {
+    private func readLine(from fd: Int32, maxBytes: Int = controlProtocolMaxLineBytes) -> String? {
         var data = Data()
         var buffer = [UInt8](repeating: 0, count: 1_024)
 
