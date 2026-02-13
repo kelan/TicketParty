@@ -14,7 +14,7 @@ private struct SupervisorConfiguration {
         let defaultRuntime = "~/Library/Application Support/TicketParty/runtime"
         let defaultRecord = "\(defaultRuntime)/supervisor.json"
         let defaultSocket = "\(defaultRuntime)/supervisor.sock"
-        let defaultSidecarScript = "codex-sidecar/sidecar.mjs"
+        let defaultSidecarScript = resolveDefaultSidecarScriptPath()
 
         var runtimeDirectory = defaultRuntime
         var recordPath = defaultRecord
@@ -82,6 +82,37 @@ private struct SupervisorConfiguration {
     private static func normalizePath(_ rawPath: String) -> String {
         let expanded = (rawPath as NSString).expandingTildeInPath
         return URL(fileURLWithPath: expanded).standardizedFileURL.path
+    }
+
+    private static func resolveDefaultSidecarScriptPath() -> String {
+        let fileManager = FileManager.default
+
+        let envOverride = ProcessInfo.processInfo.environment["TICKETPARTY_SIDECAR_SCRIPT"]
+        let sourceRootCandidate = compileTimeRepositoryRoot()
+            .appendingPathComponent("codex-sidecar/sidecar.mjs")
+            .path
+        let cwdCandidate = URL(fileURLWithPath: fileManager.currentDirectoryPath)
+            .appendingPathComponent("codex-sidecar/sidecar.mjs")
+            .path
+
+        let candidates = [envOverride, sourceRootCandidate, cwdCandidate]
+            .compactMap(\.self)
+            .map(normalizePath)
+
+        for candidate in candidates where fileManager.fileExists(atPath: candidate) {
+            return candidate
+        }
+
+        // Prefer repo-local candidate for diagnostics if no candidate exists.
+        return normalizePath(sourceRootCandidate)
+    }
+
+    private static func compileTimeRepositoryRoot() -> URL {
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0 ..< 4 {
+            url.deleteLastPathComponent()
+        }
+        return url.standardizedFileURL
     }
 }
 
@@ -2762,7 +2793,7 @@ private func printUsage() {
           --record-path <path>      Supervisor runtime record path
           --socket-path <path>      Control socket path written in runtime record
           --protocol-version <int>  Protocol version for handshake metadata (default: 2)
-          --sidecar-script <path>   Sidecar script path (default: ~/dev/codex-sidecar/sidecar.mjs)
+          --sidecar-script <path>   Sidecar script path (default: auto-resolved repo-local path)
           --node-binary <path>      Node executable path (optional)
           --help                    Show help
         """
