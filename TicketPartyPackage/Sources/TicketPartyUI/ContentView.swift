@@ -28,6 +28,14 @@ public struct TicketPartyRootView: View {
         _selection = State(initialValue: selectionStore.loadSidebarSelection() ?? .activity)
     }
 
+    private var orderedProjects: [Project] {
+        ProjectListOrdering.sorted(projects)
+    }
+
+    private var activeProjects: [Project] {
+        orderedProjects.filter { $0.isArchived == false }
+    }
+
     public var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
@@ -42,7 +50,7 @@ public struct TicketPartyRootView: View {
                 }
 
                 Section {
-                    ForEach(projects, id: \.id) { project in
+                    ForEach(orderedProjects, id: \.id) { project in
                         NavigationLink(value: SidebarSelection.project(project.id)) {
                             let sidebarStatus = sidebarStatus(for: project)
                             let agentStatus = codexViewModel.status(for: project.id)
@@ -50,6 +58,11 @@ public struct TicketPartyRootView: View {
                                 HStack(spacing: 6) {
                                     Text(project.name)
                                         .font(.headline)
+                                    if project.isArchived {
+                                        Text("Archived")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
 
                                 Text("Updated \(updatedSubtitle(for: sidebarStatus.lastUpdated))")
@@ -70,15 +83,37 @@ public struct TicketPartyRootView: View {
                                 SidebarTicketStateSummary(stateCounts: sidebarStatus.runningStateCounts)
                             }
                             .padding(.vertical, 2)
+                            .opacity(project.isArchived ? 0.55 : 1)
                         }
                         .contextMenu {
+                            Button {
+                                toggleArchiveState(for: project)
+                            } label: {
+                                Label(
+                                    project.isArchived ? "Unarchive Project" : "Archive Project",
+                                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
+                                )
+                            }
+
+                            Divider()
+
                             Button(role: .destructive) {
                                 requestProjectDeletion(project)
                             } label: {
                                 Label("Delete Project", systemImage: "trash")
                             }
                         }
-                        .swipeActions {
+                        .swipeActions(allowsFullSwipe: false) {
+                            Button {
+                                toggleArchiveState(for: project)
+                            } label: {
+                                Label(
+                                    project.isArchived ? "Unarchive" : "Archive",
+                                    systemImage: project.isArchived ? "tray.and.arrow.up" : "archivebox"
+                                )
+                            }
+                            .tint(project.isArchived ? .green : .secondary)
+
                             Button(role: .destructive) {
                                 requestProjectDeletion(project)
                             } label: {
@@ -110,13 +145,13 @@ public struct TicketPartyRootView: View {
         } detail: {
             switch selection ?? .activity {
             case .activity:
-                ActivityView(projects: projects, tickets: tickets)
+                ActivityView(projects: orderedProjects, tickets: tickets)
 
             case .allProjects:
-                OverallKanbanView(projects: projects)
+                OverallKanbanView(projects: orderedProjects)
 
             case let .project(projectID):
-                if let project = projects.first(where: { $0.id == projectID }) {
+                if let project = orderedProjects.first(where: { $0.id == projectID }) {
                     ProjectDetailView(
                         project: project,
                         initialSelectedTicketID: selectionStore.loadSelectedTicketID(for: project.id),
@@ -158,7 +193,7 @@ public struct TicketPartyRootView: View {
             TicketEditorSheet(
                 title: "New Ticket",
                 submitLabel: "Create",
-                projects: projects,
+                projects: activeProjects,
                 showsAddToTopOfBacklogOption: true,
                 initialDraft: ticketDraft,
                 onSubmit: createTicket
@@ -184,7 +219,7 @@ public struct TicketPartyRootView: View {
         }
         .onDeleteCommand {
             guard case let .project(projectID)? = selection else { return }
-            guard let project = projects.first(where: { $0.id == projectID }) else { return }
+            guard let project = orderedProjects.first(where: { $0.id == projectID }) else { return }
             requestProjectDeletion(project)
         }
         .onReceive(NotificationCenter.default.publisher(for: .ticketPartyNewTicketRequested)) { _ in
@@ -216,6 +251,7 @@ public struct TicketPartyRootView: View {
     private func createTicket(_ draft: TicketDraft) {
         let normalizedDraft = draft.normalized
         guard let projectID = normalizedDraft.projectID else { return }
+        guard activeProjects.contains(where: { $0.id == projectID }) else { return }
 
         var descriptor = FetchDescriptor<Ticket>(sortBy: [SortDescriptor(\Ticket.ticketNumber, order: .reverse)])
         descriptor.fetchLimit = 1
@@ -351,8 +387,31 @@ public struct TicketPartyRootView: View {
             nil
         }
 
-        ticketDraft = TicketDraft(projectID: preferredProjectID ?? currentProjectID ?? projects.first?.id)
+        let preferredActiveProjectID: UUID? = if let preferredProjectID,
+                                                 activeProjects.contains(where: { $0.id == preferredProjectID })
+        {
+            preferredProjectID
+        } else if let currentProjectID,
+                  activeProjects.contains(where: { $0.id == currentProjectID })
+        {
+            currentProjectID
+        } else {
+            nil
+        }
+
+        ticketDraft = TicketDraft(projectID: preferredActiveProjectID ?? activeProjects.first?.id)
         isPresentingCreateTicket = true
+    }
+
+    private func toggleArchiveState(for project: Project) {
+        project.archivedAt = project.isArchived ? nil : .now
+        project.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
     }
 
     private func sidebarStatus(for project: Project) -> ProjectSidebarStatus {

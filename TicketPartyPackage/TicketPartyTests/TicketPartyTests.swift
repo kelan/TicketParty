@@ -812,6 +812,49 @@ struct TicketPartyTests {
     }
 
     @Test
+    func projectListOrdering_sortsActiveBeforeArchived() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let activeOlder = Project(
+            name: "Active Older",
+            createdAt: base.addingTimeInterval(-300),
+            updatedAt: base.addingTimeInterval(-300)
+        )
+        let activeNewer = Project(
+            name: "Active Newer",
+            createdAt: base.addingTimeInterval(-100),
+            updatedAt: base.addingTimeInterval(-100)
+        )
+        let archivedOlder = Project(
+            name: "Archived Older",
+            createdAt: base.addingTimeInterval(-200),
+            updatedAt: base.addingTimeInterval(-200),
+            archivedAt: base.addingTimeInterval(-50)
+        )
+        let archivedNewer = Project(
+            name: "Archived Newer",
+            createdAt: base,
+            updatedAt: base,
+            archivedAt: base
+        )
+
+        let sorted = ProjectListOrdering.sorted([archivedNewer, activeNewer, archivedOlder, activeOlder])
+
+        #expect(sorted.map(\.id) == [activeOlder.id, activeNewer.id, archivedOlder.id, archivedNewer.id])
+    }
+
+    @Test
+    func project_isArchived_reflectsArchivedAtPresence() {
+        let project = Project(name: "Sample")
+        #expect(project.isArchived == false)
+
+        project.archivedAt = .now
+        #expect(project.isArchived)
+
+        project.archivedAt = nil
+        #expect(project.isArchived == false)
+    }
+
+    @Test
     func supervisorHealthChecker_instanceTokenMismatch_fallsBackToHealthy() async throws {
         let rootURL = URL(fileURLWithPath: "/tmp", isDirectory: true)
             .appendingPathComponent("SupervisorHealthStub-\(UUID().uuidString)", isDirectory: true)

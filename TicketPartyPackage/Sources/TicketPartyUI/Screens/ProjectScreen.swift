@@ -165,7 +165,7 @@ struct ProjectDetailView: View {
                     Image(systemName: "play.circle")
                 }
                 .help(primaryCodexActionHelpText)
-                .disabled(canStartRunLoop == false)
+                .disabled(canStartRunLoop == false || project.isArchived)
 
                 Button {
                     onRequestNewTicket(project.id)
@@ -173,6 +173,7 @@ struct ProjectDetailView: View {
                     Image(systemName: "plus")
                 }
                 .help("New Ticket")
+                .disabled(project.isArchived)
 
                 if let selectedTicket {
                     Button {
@@ -181,7 +182,7 @@ struct ProjectDetailView: View {
                         Image(systemName: "arrow.up.to.line")
                     }
                     .help("Move Ticket to Top of Backlog")
-                    .disabled(canMoveSelectedTicketToTop == false)
+                    .disabled(canMoveSelectedTicketToTop == false || project.isArchived)
 
                     Button {
                         openTicketForEditing(selectedTicket.id)
@@ -189,16 +190,26 @@ struct ProjectDetailView: View {
                         Image(systemName: "pencil")
                     }
                     .help("Edit Ticket")
+                    .disabled(project.isArchived)
                 }
             }
 
             ToolbarItem(placement: .navigation) {
-                Button {
-                    isPresentingEditProject = true
-                } label: {
-                    Image(systemName: "info.circle")
+                HStack(spacing: 10) {
+                    Button {
+                        toggleProjectArchive()
+                    } label: {
+                        Image(systemName: project.isArchived ? "tray.and.arrow.up" : "archivebox")
+                    }
+                    .help(project.isArchived ? "Unarchive Project" : "Archive Project")
+
+                    Button {
+                        isPresentingEditProject = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .help("Edit Project")
                 }
-                .help("Edit Project")
             }
         }
         .sheet(isPresented: $isPresentingEditProject) {
@@ -311,6 +322,10 @@ struct ProjectDetailView: View {
     }
 
     private var primaryCodexActionHelpText: String {
+        if project.isArchived {
+            return "Unarchive project to run Codex"
+        }
+
         if shouldRunSelectedDoneTicketFollowUp {
             return "Send selected done ticket to Codex for a follow-up"
         }
@@ -318,6 +333,8 @@ struct ProjectDetailView: View {
     }
 
     private func runPrimaryCodexAction() async {
+        guard project.isArchived == false else { return }
+
         if shouldRunSelectedDoneTicketFollowUp, let selectedTicket {
             if selectedTicket.quickStatus != .inProgress {
                 selectedTicket.quickStatus = .inProgress
@@ -337,11 +354,13 @@ struct ProjectDetailView: View {
     }
 
     private func requestEditSelectedTicket() {
+        guard project.isArchived == false else { return }
         guard let selectedTicket else { return }
         openTicketForEditing(selectedTicket.id)
     }
 
     private func openTicketForEditing(_ ticketID: UUID) {
+        guard project.isArchived == false else { return }
         selectedTicketID = ticketID
         ticketEditSession = TicketEditSession(id: ticketID)
     }
@@ -365,6 +384,7 @@ struct ProjectDetailView: View {
     }
 
     private func moveBacklogTickets(from source: IndexSet, to destination: Int) {
+        guard project.isArchived == false else { return }
         guard isBacklogReorderingEnabled else { return }
         guard let movedSourceIndex = source.first else { return }
         let movedTicketID = visibleBacklogTickets[movedSourceIndex].id
@@ -376,6 +396,7 @@ struct ProjectDetailView: View {
     }
 
     private func moveSelectedTicket(by direction: Int) {
+        guard project.isArchived == false else { return }
         guard isBacklogReorderingEnabled else { return }
         guard let selectedTicketID else { return }
         guard let currentIndex = visibleBacklogTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
@@ -397,6 +418,7 @@ struct ProjectDetailView: View {
     }
 
     private func moveSelectedTicketToTop() {
+        guard project.isArchived == false else { return }
         guard isBacklogReorderingEnabled else { return }
         guard let selectedTicketID else { return }
         guard let currentIndex = visibleBacklogTickets.firstIndex(where: { $0.id == selectedTicketID }) else { return }
@@ -466,6 +488,17 @@ struct ProjectDetailView: View {
             return lhs.createdAt < rhs.createdAt
         }
         return lhs.orderKey < rhs.orderKey
+    }
+
+    private func toggleProjectArchive() {
+        project.archivedAt = project.isArchived ? nil : .now
+        project.updatedAt = .now
+
+        do {
+            try modelContext.save()
+        } catch {
+            // Keep UI flow simple for now; we'll add user-visible error handling later.
+        }
     }
 }
 

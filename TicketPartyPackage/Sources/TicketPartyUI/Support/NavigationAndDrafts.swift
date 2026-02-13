@@ -29,6 +29,10 @@ struct ProjectDraft: Equatable {
 }
 
 extension Project {
+    var isArchived: Bool {
+        archivedAt != nil
+    }
+
     var sidebarSubtitle: String {
         if statusText.isEmpty == false {
             return statusText
