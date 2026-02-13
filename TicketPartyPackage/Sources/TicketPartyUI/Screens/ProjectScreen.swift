@@ -633,18 +633,6 @@ private struct ProjectWorkspaceView: View {
             TicketStatusBadge(status: ticket.quickStatus)
         }
         .padding(.vertical, 2)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard isPreview == false else { return }
-            selectedTicketID = ticket.id
-        }
-        .simultaneousGesture(
-            TapGesture(count: 2)
-                .onEnded {
-                    guard isPreview == false else { return }
-                    onOpenTicketForEditing(ticket.id)
-                }
-        )
     }
 
     private func doneDateStamp(for ticket: Ticket) -> String? {
