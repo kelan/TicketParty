@@ -1149,6 +1149,7 @@ final class CodexViewModel {
     var activeAssistantMessageByTicketID: [UUID: UUID] = [:]
     var ticketConversationMessages: [UUID: [TicketConversationMessageRecord]] = [:]
     var ticketConversationModes: [UUID: TicketConversationMode] = [:]
+    var ticketSendingModes: [UUID: TicketConversationMode] = [:]
     var ticketConversationLoading: [UUID: Bool] = [:]
     var supervisorHealth: CodexSupervisorHealthStatus = .notRunning
 
@@ -1226,6 +1227,11 @@ final class CodexViewModel {
         ticketConversationMessages[ticketID, default: []]
     }
 
+    func inFlightConversationMode(for ticketID: UUID) -> TicketConversationMode? {
+        guard ticketIsSending[ticketID] == true else { return nil }
+        return ticketSendingModes[ticketID] ?? ticketConversationModes[ticketID] ?? .plan
+    }
+
     func statusAttentionIndicator(for ticketID: UUID) -> TicketStatusAttentionIndicator? {
         if let error = ticketErrors[ticketID]?.trimmingCharacters(in: .whitespacesAndNewlines), error.isEmpty == false {
             return .error
@@ -1249,6 +1255,9 @@ final class CodexViewModel {
         do {
             try conversationStore.setMode(ticketID: ticketID, mode: mode)
             ticketConversationModes[ticketID] = mode
+            if ticketIsSending[ticketID] == true {
+                ticketSendingModes[ticketID] = mode
+            }
         } catch {
             ticketErrors[ticketID] = "Failed to set mode: \(error.localizedDescription)"
         }
@@ -1300,6 +1309,7 @@ final class CodexViewModel {
                 summary: replay.summary,
                 messages: replay.messages
             )
+            ticketSendingModes[ticketID] = mode
         } catch {
             ticketErrors[ticketID] = "Failed to prepare message: \(error.localizedDescription)"
             return
@@ -1487,6 +1497,9 @@ final class CodexViewModel {
             projectStatuses[projectID] = status
 
         case let .ticketStarted(ticketID):
+            if ticketSendingModes[ticketID] == nil {
+                ticketSendingModes[ticketID] = resolvedConversationModeForTicketStart(ticketID: ticketID)
+            }
             setTicketSending(true, for: ticketID)
 
         case let .ticketOutput(ticketID, line):
@@ -1555,6 +1568,7 @@ final class CodexViewModel {
             }
 
         case let .ticketStarted(_, ticketID, _, _):
+            ticketSendingModes[ticketID] = .implement
             setTicketSending(true, for: ticketID)
             setTicketStatus(ticketID: ticketID, status: .inProgress)
 
@@ -1760,8 +1774,20 @@ final class CodexViewModel {
             updated[ticketID] = true
         } else {
             updated.removeValue(forKey: ticketID)
+            ticketSendingModes.removeValue(forKey: ticketID)
         }
         ticketIsSending = updated
+    }
+
+    private func resolvedConversationModeForTicketStart(ticketID: UUID) -> TicketConversationMode {
+        if let mode = ticketConversationModes[ticketID] {
+            return mode
+        }
+        if let mode = try? conversationStore.mode(ticketID: ticketID) {
+            ticketConversationModes[ticketID] = mode
+            return mode
+        }
+        return .plan
     }
 
     private func markCurrentLoopTicketAsInProgress(projectID: UUID, fallbackTickets: [LoopTicketItem]) async {

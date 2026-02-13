@@ -587,12 +587,9 @@ private struct ProjectWorkspaceView: View {
 
             Spacer(minLength: 0)
 
-            if codexViewModel.ticketIsSending[ticket.id] == true {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 8, height: 8)
+            if let mode = codexViewModel.inFlightConversationMode(for: ticket.id) {
+                TicketConversationModeDot(mode: mode)
                     .padding(.top, 6)
-                    .accessibilityLabel("Running with agent")
             }
 
             if let indicator = codexViewModel.statusAttentionIndicator(for: ticket.id) {
@@ -1059,6 +1056,17 @@ private struct TicketStatusAttentionDot: View {
     }
 }
 
+private struct TicketConversationModeDot: View {
+    let mode: TicketConversationMode
+
+    var body: some View {
+        Circle()
+            .fill(mode.inFlightDotColor)
+            .frame(width: 8, height: 8)
+            .accessibilityLabel(mode.inFlightDotAccessibilityLabel)
+    }
+}
+
 private extension TicketQuickStatus {
 
     var isBacklogSortable: Bool {
@@ -1098,6 +1106,26 @@ private extension TicketConversationRole {
             "Codex"
         case .system:
             "System"
+        }
+    }
+}
+
+private extension TicketConversationMode {
+    var inFlightDotColor: Color {
+        switch self {
+        case .plan:
+            .blue
+        case .implement:
+            .green
+        }
+    }
+
+    var inFlightDotAccessibilityLabel: String {
+        switch self {
+        case .plan:
+            "Planning in progress"
+        case .implement:
+            "Implementation in progress"
         }
     }
 }

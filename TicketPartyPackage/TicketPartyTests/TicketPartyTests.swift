@@ -441,6 +441,44 @@ struct TicketPartyTests {
 
     @Test
     @MainActor
+    func codexViewModel_inFlightConversationMode_prefersExplicitSendingMode() throws {
+        _ = try TestEnvironment()
+        let viewModel = CodexViewModel(startBackgroundTasks: false)
+        let ticketID = UUID()
+
+        viewModel.ticketIsSending[ticketID] = true
+        viewModel.ticketConversationModes[ticketID] = .plan
+        viewModel.ticketSendingModes[ticketID] = .implement
+
+        #expect(viewModel.inFlightConversationMode(for: ticketID) == .implement)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_inFlightConversationMode_defaultsToPlanWhenUnknown() throws {
+        _ = try TestEnvironment()
+        let viewModel = CodexViewModel(startBackgroundTasks: false)
+        let ticketID = UUID()
+
+        viewModel.ticketIsSending[ticketID] = true
+
+        #expect(viewModel.inFlightConversationMode(for: ticketID) == .plan)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_inFlightConversationMode_isNilWhenNotSending() throws {
+        _ = try TestEnvironment()
+        let viewModel = CodexViewModel(startBackgroundTasks: false)
+        let ticketID = UUID()
+
+        viewModel.ticketConversationModes[ticketID] = .implement
+
+        #expect(viewModel.inFlightConversationMode(for: ticketID) == nil)
+    }
+
+    @Test
+    @MainActor
     func codexViewModel_startLoop_setsTicketInProgress_withConfiguredContext() async throws {
         _ = try TestEnvironment()
         let container = try TicketPartyPersistence.makeSharedContainer()
