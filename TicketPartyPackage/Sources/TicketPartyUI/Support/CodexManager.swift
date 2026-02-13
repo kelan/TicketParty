@@ -1578,6 +1578,11 @@ final class CodexViewModel {
             } else if let message, message.isEmpty == false {
                 ticketErrors[ticketID] = message
             }
+            updateTicketStatusAfterCompletion(
+                ticketID: ticketID,
+                success: success,
+                mode: .implement
+            )
             setTicketSending(false, for: ticketID)
 
         case .cleanupStepStarted:
@@ -1591,6 +1596,8 @@ final class CodexViewModel {
     }
 
     private func applyTicketCompletion(ticketID: UUID, success: Bool, summary: String?) {
+        let completionMode = completionModeForTicketCompletion(ticketID: ticketID)
+
         if let runID = activeRunByTicketID.removeValue(forKey: ticketID) {
             do {
                 try transcriptStore.completeRun(runID: runID, success: success, summary: summary)
@@ -1614,7 +1621,33 @@ final class CodexViewModel {
         } else if let summary, summary.isEmpty == false {
             ticketErrors[ticketID] = summary
         }
+        updateTicketStatusAfterCompletion(
+            ticketID: ticketID,
+            success: success,
+            mode: completionMode
+        )
         setTicketSending(false, for: ticketID)
+    }
+
+    func updateTicketStatusAfterCompletion(
+        ticketID: UUID,
+        success: Bool,
+        mode: TicketConversationMode?
+    ) {
+        guard success, mode == .implement else {
+            return
+        }
+        setTicketStatus(ticketID: ticketID, status: .review)
+    }
+
+    private func completionModeForTicketCompletion(ticketID: UUID) -> TicketConversationMode? {
+        if let mode = ticketSendingModes[ticketID] {
+            return mode
+        }
+        if let mode = ticketConversationModes[ticketID] {
+            return mode
+        }
+        return try? conversationStore.mode(ticketID: ticketID)
     }
 
     private func agentTicketCompletion(from line: String) -> (success: Bool, summary: String?)? {

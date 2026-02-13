@@ -271,6 +271,71 @@ struct TicketPartyTests {
     }
 
     @Test
+    @MainActor
+    func codexViewModel_updateTicketStatusAfterCompletion_setsReviewForSuccessfulImplementation() throws {
+        _ = try TestEnvironment()
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
+        let ticket = Ticket(
+            ticketNumber: 43,
+            displayID: "TT-43",
+            title: "Move to review",
+            description: "Implementation completion should move status",
+            stateID: TicketQuickStatus.inProgress.stateID
+        )
+        context.insert(ticket)
+        try context.save()
+
+        let viewModel = CodexViewModel(startBackgroundTasks: false)
+        viewModel.configure(modelContext: context)
+
+        viewModel.updateTicketStatusAfterCompletion(
+            ticketID: ticket.id,
+            success: true,
+            mode: .implement
+        )
+
+        let persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .review)
+    }
+
+    @Test
+    @MainActor
+    func codexViewModel_updateTicketStatusAfterCompletion_ignoresPlanAndFailures() throws {
+        _ = try TestEnvironment()
+        let container = try TicketPartyPersistence.makeSharedContainer()
+        let context = ModelContext(container)
+        let ticket = Ticket(
+            ticketNumber: 44,
+            displayID: "TT-44",
+            title: "Do not move on non-implementation completion",
+            description: "Only successful implementation should move status",
+            stateID: TicketQuickStatus.inProgress.stateID
+        )
+        context.insert(ticket)
+        try context.save()
+
+        let viewModel = CodexViewModel(startBackgroundTasks: false)
+        viewModel.configure(modelContext: context)
+
+        viewModel.updateTicketStatusAfterCompletion(
+            ticketID: ticket.id,
+            success: true,
+            mode: .plan
+        )
+        var persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .inProgress)
+
+        viewModel.updateTicketStatusAfterCompletion(
+            ticketID: ticket.id,
+            success: false,
+            mode: .implement
+        )
+        persistedTicket = try #require(try fetchTicket(ticketID: ticket.id))
+        #expect(persistedTicket.quickStatus == .inProgress)
+    }
+
+    @Test
     func conversationStore_reloadsAcrossStoreInstances() throws {
         _ = try TestEnvironment()
         let ticketID = UUID()
